@@ -69,6 +69,12 @@ import os
 # Default mode is SILENT mode
 verbose = 0
 
+# MAC protocol selection
+# 0 : Pure Aloha
+# 1 : Slotted Aloha
+# 2 : ToDo
+mac_protocol = 0
+
 # turn on/off graphics
 graphics = 1
 
@@ -433,22 +439,39 @@ def transmit(env,node):
         #else if A!= random.randint(1,10):
         #    B = random.randint(1,10)
         #    yield env.timeout(B)
-        global transmit_instant
+        global txInstantVector
         global slot_time
         global verbose
         A = random.expovariate(1.0 / float(node.period))
-        if (verbose>=1):
-            print("INFO: transmission is scheduled at ", env.now + A)
-
-        if A in transmit_instant:
-            yield env.timeout(A)
-        else:
-            deltaT = slot_time - (A%slot_time)
-            A = A + deltaT
+        if (mac_protocol == 0):
+            # Pure Aloha protocol
+            nextTxInstant = random.expovariate(1.0/float(node.period))
             if (verbose>=1):
-                print("INFO: transmission of the packet is delayed of ", deltaT, "[ s]")
-                print("INFO: new transmission is scheduled at ", env.now + A)
-            yield env.timeout(A)
+                print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
+
+            yield env.timeout(nextTxInstant)
+        elif (mac_protocol == 1):
+            # Slotted Aloha proocol
+            nextTxInstant = random.expovariate(1.0/float(node.period))
+            if nextTxInstant in txInstantVector:
+                if (verbose>=1):
+                    print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
+
+                yield env.timeout(nextTxInstant)
+            else:
+                delayTime = slot_time - (nextTxInstant%slot_time)
+                nextTxInstant = nextTxInstant + delayTime
+                if (verbose>=1):
+                    print("INFO: transmission of the packet is delayed of ", delayTime, "[ s]")
+                    print("INFO: new transmission is scheduled at ", env.now + nextTxInstant)
+                yield env.timeout(nextTxInstant)
+        else:
+            # Default MAC protocol : Pure Aloha
+            # Pure Aloha protocol
+            nextTxInstant = random.expovariate(1.0/float(node.period))
+            if (verbose>=1):
+                print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
+            yield env.timeout(nextTxInstant)
 
         # time sending and receiving
         # packet arrives -> add to base station
