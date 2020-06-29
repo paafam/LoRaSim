@@ -76,7 +76,7 @@ verbose = 0
 mac_protocol = 1
 
 # Load nodes location from file
-loadNodesLocation = 1
+loadNodesLocation = 0
 
 # turn on/off graphics
 graphics = 1
