@@ -46,6 +46,10 @@
     whereby X is the experiment number. The file contains a space separated table
     of values for nodes, collisions, transmissions and total energy spent. The
     data file can be easily plotted using e.g. gnuplot.
+    
+ EXAMPLE
+    > python loraDir.py 100 1000000 1 5011200000
+
 """
 
 import simpy
@@ -63,7 +67,7 @@ import os
 # 2 : ERROR mode : only error messages are printed
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
-verbose = 1
+verbose = 0
 
 # turn on/off graphics
 graphics = 0
@@ -440,6 +444,7 @@ def transmit(env,node):
             A = A + deltaT
             if (verbose>=1):
                 print("INFO: transmission of the packet is delayed of ", deltaT, "[ s]")
+                print("INFO: new transmission is scheduled at ", env.now + A)
             yield env.timeout(A)
 
         # time sending and receiving
