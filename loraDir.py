@@ -49,6 +49,7 @@
 """
 
 import simpy
+
 import random
 import numpy as np
 import math
@@ -66,7 +67,6 @@ verbose = 1
 
 # turn on/off graphics
 graphics = 0
-
 # do the full collision check
 full_collision = False
 
@@ -284,6 +284,8 @@ class myNode():
 
         self.packet = myPacket(self.nodeid, packetlen, self.dist)
         self.sent = 0
+        # comptage du nombre de paquets recus
+        self.received = 0
 
         # graphics for node
         global graphics
@@ -414,7 +416,7 @@ class myPacket():
 # a global list of packet being processed at the gateway
 # is maintained
 #
-# modification fonction transmit pour faire du Alloha sloté ligne 393-399 by IKF
+# modification fonction transmit pour faire du Alloha sloté by IKF
 def transmit(env,node):
     while True:
         # Pure Aloha
@@ -423,11 +425,7 @@ def transmit(env,node):
         
         # Aloha slotted
         # uncomment the following line to use Aloha slotted medium access protocol
-        #if A == random.randint(1,10):
-        #    yield env.timeout(A)
-        #else if A!= random.randint(1,10):
-        #    B = random.randint(1,10)
-        #    yield env.timeout(B)
+
         global transmit_instant
         global slot_time
         global verbose
@@ -503,7 +501,8 @@ if len(sys.argv) >= 5:
     experiment = int(sys.argv[3])
     simtime = int(sys.argv[4])
     #instant de transmission et durée d'un slot by IF
-    slot_time = 2
+    slot_time = 100
+
     transmit_instant = np.arange(0,simtime,slot_time)
     if len(sys.argv) > 5:
         full_collision = bool(int(sys.argv[5]))
@@ -513,7 +512,8 @@ if len(sys.argv) >= 5:
     print ("Simtime: ", simtime)
     print ("Full Collision: ", full_collision)
 else:
-    print ("usage: ./loraDir <nodes> <avgsend> <experiment> <simtime> [collision]")
+    print ("usage: ./loraDir <nodes> <avgsend> <experi"
+           "ment> <simtime> [collision]")
     print ("experiment 0 and 1 use 1 frequency only")
     exit(-1)
 
@@ -632,6 +632,7 @@ with open(fname, "a") as myfile:
 myfile.close()
 
 # with open('nodes.txt','w') as nfile:
+
 #     for n in nodes:
 #         nfile.write("{} {} {}\n".format(n.x, n.y, n.nodeid))
 # with open('basestation.txt', 'w') as bfile:
