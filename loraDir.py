@@ -19,6 +19,7 @@
  SYNOPSIS:
    ./loraDir.py <nodes> <avgsend> <experiment> <simtime> [collision]
  DESCRIPTION:
+ 
     nodes
         number of nodes to simulate
     avgsend
@@ -238,6 +239,7 @@ def airtime(sf,cr,pl,bw):
         print ("INFO: sf", sf, " cr", cr, "pl", pl, "bw", bw)
     payloadSymbNB = 8 + max(math.ceil((8.0*pl-4.0*sf+28+16-20*H)/(4.0*(sf-2*DE)))*(cr+4),0)
     Tpayload = payloadSymbNB * Tsym
+
     return Tpream + Tpayload
 
 #
@@ -424,28 +426,28 @@ class myPacket():
 def transmit(env,node):
     while True:
         # Pure Aloha
-        # A = random.expovariate(1.0/float(node.period))
-        # yield env.timeout(A)
+        A = random.expovariate(1.0/float(node.period))
+        yield env.timeout(A)
         
         # Aloha slotted
         # uncomment the following line to use Aloha slotted medium access protocol
 
-        global transmit_instant
-        global slot_time
-        global verbose
-        A = random.expovariate(1.0 / float(node.period))
-        if (verbose>=1):
-            print("INFO: transmission is scheduled at ", env.now + A)
+        # global transmit_instant
+        # global slot_time
+        # global verbose
+        # A = random.expovariate(1.0 / float(node.period))
+        # if (verbose>=1):
+            # print("INFO: transmission is scheduled at ", env.now + A)
 
-        if A in transmit_instant:
-            yield env.timeout(A)
-        else:
-            deltaT = slot_time - (A%slot_time)
-            A = A + deltaT
-            if (verbose>=1):
-                print("INFO: transmission of the packet is delayed of ", deltaT, "[ s]")
-                print("INFO: new transmission is scheduled at ", env.now + A)
-            yield env.timeout(A)
+        # if A in transmit_instant:
+            # yield env.timeout(A)
+        # else:
+            # deltaT = slot_time - (A%slot_time)
+            # A = A + deltaT
+            # if (verbose>=1):
+                # print("INFO: transmission of the packet is delayed of ", deltaT, "[ s]")
+                # print("INFO: new transmission is scheduled at ", env.now + A)
+            # yield env.timeout(A)
 
         # time sending and receiving
         # packet arrives -> add to base station
@@ -505,10 +507,10 @@ if len(sys.argv) >= 5:
     avgSendTime = int(sys.argv[2])
     experiment = int(sys.argv[3])
     simtime = int(sys.argv[4])
-    #instant de transmission et durée d'un slot by IF
-    slot_time = 100
+    #instant de transmission et durée d'un slot by IF pour le Aloha sloté
+    # slot_time = 100
 
-    transmit_instant = np.arange(0,simtime,slot_time)
+    # transmit_instant = np.arange(0,simtime,slot_time)
     if len(sys.argv) > 5:
         full_collision = bool(int(sys.argv[5]))
     print ("Nodes:", nrNodes)
@@ -604,10 +606,21 @@ TX = [22, 22, 22, 23,                                      # RFO/PA0: -2..1
       105, 115, 125]                                       # PA_BOOST/PA1+PA2: 18..20
 # mA = 90    # current draw for TX = 17 dBm
 V = 3.0     # voltage XXX
+Iidle = 1.5 #according to the datasheet this is the supply current in the idle mode in mA
+idletime = 2000 # time in idle mode in ms
+Istb = 1.6 #according to the datasheet this is the supply current in standby mode in mA
+Isleep = 0.0002 #according to the datasheet this is the supply current in sleep mode in mA
+Nstb= 2 # number of stanby mode, nodes go two time in standby mode
 sent = sum(n.sent for n in nodes)
-energy = sum(node.packet.rectime * TX[int(node.packet.txpow)+2] * V * node.sent for node in nodes) / 1e6
-
-print ("energy (in J): ", energy)
+test = airtime(11,4/5,8,125)
+energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow)+2] * V * node.sent for node in nodes)
+energy_idle = sum(idletime* Iidle * V * node.sent for node in nodes)
+energy_stb = sum(test.Tpream * Nstb *Istb * V * node.sent for node in nodes)
+energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*test.Tpream)*Isleep*V * node.sent for node in nodes)
+energy1 = energy_TxUL/1e6
+energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
+print ("energy (in J) in tx only: ", energy1)
+print (" total energy (in J): ", energy2)
 print ("sent packets: ", sent)
 print ("collisions: ", nrCollisions)
 print ("received packets: ", nrReceived)
