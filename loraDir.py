@@ -78,7 +78,7 @@ Tpream = 0
 # 0 : Pure Aloha
 # 1 : Slotted Aloha
 # 2 : ToDo
-mac_protocol = 1
+mac_protocol = 0
 
 # Load nodes location from file
 loadNodesLocation = 0
@@ -699,7 +699,7 @@ else:
     # res2 = "#nrNodes nrCollisions nrTransmissions OverallEnergy\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
 with open(fname, "a") as myfile:
     myfile.write(res1)
-    myfile.write(res2)
+    #myfile.write(res2)
 
 myfile.close()
 
