@@ -553,7 +553,7 @@ if len(sys.argv) >= 5:
 
     #instant de transmission et durée d'un slot pour le Aloha sloté
     slot_time = 100
-    transmit_instant = np.arange(0,simtime,slot_time)
+    txInstantVector = np.arange(0,simtime,slot_time)
 
     if len(sys.argv) > 5:
         full_collision = bool(int(sys.argv[5]))
