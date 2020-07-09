@@ -69,6 +69,7 @@ import os
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
 verbose = 0
+Tpream = 0
 
 # turn on/off graphics
 graphics = 0
@@ -612,11 +613,10 @@ Istb = 1.6 #according to the datasheet this is the supply current in standby mod
 Isleep = 0.0002 #according to the datasheet this is the supply current in sleep mode in mA
 Nstb= 2 # number of stanby mode, nodes go two time in standby mode
 sent = sum(n.sent for n in nodes)
-test = airtime(11,4/5,8,125)
 energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow)+2] * V * node.sent for node in nodes)
 energy_idle = sum(idletime* Iidle * V * node.sent for node in nodes)
-energy_stb = sum(test.Tpream * Nstb *Istb * V * node.sent for node in nodes)
-energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*test.Tpream)*Isleep*V * node.sent for node in nodes)
+energy_stb = sum(Tpream * Nstb *Istb * V * node.sent for node in nodes)
+energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*Tpream)*Isleep*V * node.sent for node in nodes)
 energy1 = energy_TxUL/1e6
 energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
 print ("energy (in J) in tx only: ", energy1)
@@ -642,11 +642,16 @@ if (graphics == 1):
 fname = "exp" + str(experiment) + ".dat"
 print (fname)
 if os.path.isfile(fname):
-    res = "\n" + str(nrNodes) + " " + str(nrCollisions) + " "  + str(sent) + " " + str(energy)
+    res1 = "\n" + str(nrNodes) + " " + str(nrCollisions) + " "  + str(sent) + " " + str(energy1) + " " + str(energy2)
+    # res2 = "\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
+
 else:
-    res = "#nrNodes nrCollisions nrTransmissions OverallEnergy\n" + str(nrNodes) + " " + str(nrCollisions) + " "  + str(sent) + " " + str(energy)
+    res1 = "#nrNodes nrCollisions nrTransmissions OverallEnergy\n" + str(nrNodes) + " " + str(nrCollisions) + " "  + str(sent) + " " + str(energy1)
+    # res2 = "#nrNodes nrCollisions nrTransmissions OverallEnergy\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
 with open(fname, "a") as myfile:
-    myfile.write(res)
+    myfile.write(res1)
+    myfile.write(res2)
+
 myfile.close()
 
 # with open('nodes.txt','w') as nfile:
