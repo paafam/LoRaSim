@@ -20,6 +20,7 @@
  SYNOPSIS:
    ./loraDir.py <nodes> <avgsend> <experiment> <simtime> [collision]
  DESCRIPTION:
+ 
     nodes
         number of nodes to simulate
     avgsend
@@ -54,6 +55,7 @@
 """
 
 import simpy
+
 import random
 import numpy as np
 import math
@@ -79,7 +81,7 @@ mac_protocol = 1
 loadNodesLocation = 0
 
 # turn on/off graphics
-graphics = 1
+graphics = 0
 
 # do the full collision check
 full_collision = False
@@ -248,6 +250,7 @@ def airtime(sf,cr,pl,bw):
         print ("INFO: sf", sf, " cr", cr, "pl", pl, "bw", bw)
     payloadSymbNB = 8 + max(math.ceil((8.0*pl-4.0*sf+28+16-20*H)/(4.0*(sf-2*DE)))*(cr+4),0)
     Tpayload = payloadSymbNB * Tsym
+
     return Tpream + Tpayload
 
 #
@@ -306,6 +309,8 @@ class myNode():
 
         self.packet = myPacket(self.nodeid, packetlen, self.dist)
         self.sent = 0
+        # comptage du nombre de paquets recus
+        self.received = 0
 
         # graphics for node
         global graphics
@@ -436,12 +441,12 @@ class myPacket():
 # a global list of packet being processed at the gateway
 # is maintained
 #
-# modification fonction transmit pour faire du Alloha sloté ligne 393-399 by IKF
+# modification fonction transmit pour faire du Alloha sloté by IKF
 def transmit(env,node):
     while True:
         # Pure Aloha
-        # A = random.expovariate(1.0/float(node.period))
-        # yield env.timeout(A)
+        A = random.expovariate(1.0/float(node.period))
+        yield env.timeout(A)
         
         # Aloha slotted
         # uncomment the following line to use Aloha slotted medium access protocol
@@ -542,9 +547,11 @@ if len(sys.argv) >= 5:
     avgSendTime = int(sys.argv[2])
     experiment = int(sys.argv[3])
     simtime = int(sys.argv[4])
-    #instant de transmission et durée d'un slot by IF
-    slot_time = 1000
-    txInstantVector = np.arange(0,simtime,slot_time)
+
+    #instant de transmission et durée d'un slot pour le Aloha sloté
+    slot_time = 100
+    transmit_instant = np.arange(0,simtime,slot_time)
+
     if len(sys.argv) > 5:
         full_collision = bool(int(sys.argv[5]))
     print ("Nodes:", nrNodes)
@@ -553,7 +560,8 @@ if len(sys.argv) >= 5:
     print ("Simtime: ", simtime)
     print ("Full Collision: ", full_collision)
 else:
-    print ("usage: ./loraDir <nodes> <avgsend> <experiment> <simtime> [collision]")
+    print ("usage: ./loraDir <nodes> <avgsend> <experi"
+           "ment> <simtime> [collision]")
     print ("experiment 0 and 1 use 1 frequency only")
     exit(-1)
 
@@ -645,10 +653,21 @@ TX = [22, 22, 22, 23,                                      # RFO/PA0: -2..1
       105, 115, 125]                                       # PA_BOOST/PA1+PA2: 18..20
 # mA = 90    # current draw for TX = 17 dBm
 V = 3.0     # voltage XXX
+Iidle = 1.5 #according to the datasheet this is the supply current in the idle mode in mA
+idletime = 2000 # time in idle mode in ms
+Istb = 1.6 #according to the datasheet this is the supply current in standby mode in mA
+Isleep = 0.0002 #according to the datasheet this is the supply current in sleep mode in mA
+Nstb= 2 # number of stanby mode, nodes go two time in standby mode
 sent = sum(n.sent for n in nodes)
-energy = sum(node.packet.rectime * TX[int(node.packet.txpow)+2] * V * node.sent for node in nodes) / 1e6
-
-print ("energy (in J): ", energy)
+test = airtime(11,4/5,8,125)
+energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow)+2] * V * node.sent for node in nodes)
+energy_idle = sum(idletime* Iidle * V * node.sent for node in nodes)
+energy_stb = sum(test.Tpream * Nstb *Istb * V * node.sent for node in nodes)
+energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*test.Tpream)*Isleep*V * node.sent for node in nodes)
+energy1 = energy_TxUL/1e6
+energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
+print ("energy (in J) in tx only: ", energy1)
+print (" total energy (in J): ", energy2)
 print ("sent packets: ", sent)
 print ("collisions: ", nrCollisions)
 print ("received packets: ", nrReceived)
