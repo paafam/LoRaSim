@@ -8,6 +8,7 @@
  International License. To view a copy of this license,
  visit http://creativecommons.org/licenses/by/4.0/.
 
+
  Do LoRa Low-Power Wide-Area Networks Scale? Martin Bor, Utz Roedig, Thiemo Voigt
  and Juan Alonso, MSWiM '16, http://dx.doi.org/10.1145/2988287.2989163
 
@@ -71,8 +72,18 @@ import os
 verbose = 0
 Tpream = 0
 
+# MAC protocol selection
+# 0 : Pure Aloha
+# 1 : Slotted Aloha
+# 2 : ToDo
+mac_protocol = 1
+
+# Load nodes location from file
+loadNodesLocation = 0
+
 # turn on/off graphics
 graphics = 0
+
 # do the full collision check
 full_collision = False
 
@@ -259,32 +270,40 @@ class myNode():
         found = 0
         rounds = 0
         global nodes
-        while (found == 0 and rounds < 100):
-            a = random.random()
-            b = random.random()
-            if b<a:
-                a,b = b,a
-            posx = b*maxDist*math.cos(2*math.pi*a/b)+bsx
-            posy = b*maxDist*math.sin(2*math.pi*a/b)+bsy
-            if len(nodes) > 0:
-                for index, n in enumerate(nodes):
-                    dist = np.sqrt(((abs(n.x-posx))**2)+((abs(n.y-posy))**2))
-                    if dist >= 10:
-                        found = 1
-                        self.x = posx
-                        self.y = posy
-                    else:
-                        rounds = rounds + 1
-                        if rounds == 100:
-                            if (verbose>=1):
-                                print ("INFO: could not place new node, giving up")
-                            exit(-1)
-            else:
-                if (verbose>=1):
-                    print ("INFO: first node")
-                self.x = posx
-                self.y = posy
-                found = 1
+        global nodesPosition
+        global loadNodesLocation
+
+        if loadNodesLocation :
+            self.x = nodesPosition[nodeid][0]
+            self.y = nodesPosition[nodeid][1]
+        else:
+            while (found == 0 and rounds < 100):
+                a = random.random()
+                b = random.random()
+                if b<a:
+                    a,b = b,a
+                posx = b*maxDist*math.cos(2*math.pi*a/b)+bsx
+                posy = b*maxDist*math.sin(2*math.pi*a/b)+bsy
+                if len(nodes) > 0:
+                    for index, n in enumerate(nodes):
+                        dist = np.sqrt(((abs(n.x-posx))**2)+((abs(n.y-posy))**2))
+                        if dist >= 10:
+                            found = 1
+                            self.x = posx
+                            self.y = posy
+                        else:
+                            rounds = rounds + 1
+                            if rounds == 100:
+                                if (verbose>=1):
+                                    print ("INFO: could not place new node, giving up")
+                                exit(-1)
+                else:
+                    if (verbose>=1):
+                        print ("INFO: first node")
+                    self.x = posx
+                    self.y = posy
+                    found = 1
+
         self.dist = np.sqrt((self.x-bsx)*(self.x-bsx)+(self.y-bsy)*(self.y-bsy))
         if (verbose>=1):
             print(('INFO: node %d' %nodeid, "x", self.x, "y", self.y, "dist: ", self.dist))
@@ -432,23 +451,44 @@ def transmit(env,node):
         
         # Aloha slotted
         # uncomment the following line to use Aloha slotted medium access protocol
+        #if A == random.randint(1,10):
+        #    yield env.timeout(A)
+        #else if A!= random.randint(1,10):
+        #    B = random.randint(1,10)
+        #    yield env.timeout(B)
+        global txInstantVector
+        global slot_time
+        global verbose
+        A = random.expovariate(1.0 / float(node.period))
+        if (mac_protocol == 0):
+            # Pure Aloha protocol
+            nextTxInstant = random.expovariate(1.0/float(node.period))
+            if (verbose>=1):
+                print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
 
-        # global transmit_instant
-        # global slot_time
-        # global verbose
-        # A = random.expovariate(1.0 / float(node.period))
-        # if (verbose>=1):
-            # print("INFO: transmission is scheduled at ", env.now + A)
+            yield env.timeout(nextTxInstant)
+        elif (mac_protocol == 1):
+            # Slotted Aloha proocol
+            nextTxInstant = random.expovariate(1.0/float(node.period))
+            if nextTxInstant in txInstantVector:
+                if (verbose>=1):
+                    print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
 
-        # if A in transmit_instant:
-            # yield env.timeout(A)
-        # else:
-            # deltaT = slot_time - (A%slot_time)
-            # A = A + deltaT
-            # if (verbose>=1):
-                # print("INFO: transmission of the packet is delayed of ", deltaT, "[ s]")
-                # print("INFO: new transmission is scheduled at ", env.now + A)
-            # yield env.timeout(A)
+                yield env.timeout(nextTxInstant)
+            else:
+                delayTime = slot_time - (nextTxInstant%slot_time)
+                nextTxInstant = nextTxInstant + delayTime
+                if (verbose>=1):
+                    print("INFO: transmission of the packet is delayed of ", delayTime, "[ s]")
+                    print("INFO: new transmission is scheduled at ", env.now + nextTxInstant)
+                yield env.timeout(nextTxInstant)
+        else:
+            # Default MAC protocol : Pure Aloha
+            # Pure Aloha protocol
+            nextTxInstant = random.expovariate(1.0/float(node.period))
+            if (verbose>=1):
+                print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
+            yield env.timeout(nextTxInstant)
 
         # time sending and receiving
         # packet arrives -> add to base station
@@ -508,10 +548,11 @@ if len(sys.argv) >= 5:
     avgSendTime = int(sys.argv[2])
     experiment = int(sys.argv[3])
     simtime = int(sys.argv[4])
-    #instant de transmission et durée d'un slot by IF pour le Aloha sloté
-    # slot_time = 100
 
-    # transmit_instant = np.arange(0,simtime,slot_time)
+    #instant de transmission et durée d'un slot pour le Aloha sloté
+    slot_time = 100
+    transmit_instant = np.arange(0,simtime,slot_time)
+
     if len(sys.argv) > 5:
         full_collision = bool(int(sys.argv[5]))
     print ("Nodes:", nrNodes)
@@ -578,6 +619,12 @@ if (graphics == 1):
     ax.add_artist(plt.Circle((bsx, bsy), 3, fill=True, color='green'))
     ax.add_artist(plt.Circle((bsx, bsy), maxDist, fill=False, color='green'))
 
+# load node location from "nodes.txt" file if present and selected
+if loadNodesLocation :
+    if os.path.isfile('nodes.txt'):
+        nodesPosition = np.loadtxt('nodes.txt')
+        nrNodes = nodesPosition.shape[0]
+        print( str(nodesPosition[1][1]) +"\n")
 
 for i in range(0,nrNodes):
     # myNode takes period (in ms), base station id packetlen (in Bytes)
@@ -635,7 +682,7 @@ print ("DER method 2:", der)
 
 # this can be done to keep graphics visible
 if (graphics == 1):
-    raw_input('Press Enter to continue ...')
+    input('Press Enter to continue ...')
 
 # save experiment data into a dat file that can be read by e.g. gnuplot
 # name of file would be:  exp0.dat for experiment 0
@@ -654,9 +701,8 @@ with open(fname, "a") as myfile:
 
 myfile.close()
 
-# with open('nodes.txt','w') as nfile:
-
-#     for n in nodes:
-#         nfile.write("{} {} {}\n".format(n.x, n.y, n.nodeid))
-# with open('basestation.txt', 'w') as bfile:
-#     bfile.write("{} {} {}\n".format(bsx, bsy, 0))
+with open('nodes.txt','w') as nfile:
+    for n in nodes:
+        nfile.write("{} {} {}\n".format(n.x, n.y, n.nodeid))
+with open('basestation.txt', 'w') as bfile:
+    bfile.write("{} {} {}\n".format(bsx, bsy, 0))
