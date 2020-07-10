@@ -552,8 +552,9 @@ if len(sys.argv) >= 5:
     simtime = int(sys.argv[4])
 
     #instant de transmission et durée d'un slot pour le Aloha sloté
-    slot_time = 100
-    txInstantVector = np.arange(0,simtime,slot_time)
+    if (mac_protocol == 1):
+       slot_time = 100
+       txInstantVector = np.arange(0,simtime,slot_time)
 
     if len(sys.argv) > 5:
         full_collision = bool(int(sys.argv[5]))
