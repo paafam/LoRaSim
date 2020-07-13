@@ -18,3 +18,6 @@ do
 	done
 done
 echo =====================================================
+echo Plot figures and save it to figures directory
+python plot_figures.py
+echo =====================================================
