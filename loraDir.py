@@ -337,6 +337,7 @@ class myPacket():
 
         self.nodeid = nodeid
         self.txpow = Ptx
+        self.frame_type = 0
 
         # randomize configuration values
         self.sf = random.randint(6,12)
