@@ -558,11 +558,13 @@ if len(sys.argv) >= 5:
 
     if len(sys.argv) > 5:
         full_collision = bool(int(sys.argv[5]))
-    print ("Nodes:", nrNodes)
-    print ("AvgSendTime (exp. distributed):",avgSendTime)
-    print ("Experiment: ", experiment)
-    print ("Simtime: ", simtime)
-    print ("Full Collision: ", full_collision)
+
+    if (verbose>=1):
+        print ("Nodes:", nrNodes)
+        print ("AvgSendTime (exp. distributed):",avgSendTime)
+        print ("Experiment: ", experiment)
+        print ("Simtime: ", simtime)
+        print ("Full Collision: ", full_collision)
 else:
     print ("usage: ./loraDir <nodes> <avgsend> <experi"
            "ment> <simtime> [collision]")
@@ -603,9 +605,11 @@ elif experiment == 2:
 elif experiment in [3,5]:
     minsensi = np.amin(sensi) ## Experiment 3 can use any setting, so take minimum
 Lpl = Ptx - minsensi
-print ("amin", minsensi, "Lpl", Lpl)
+if (verbose>=1):
+    print ("amin", minsensi, "Lpl", Lpl)
 maxDist = d0*(math.e**((Lpl-Lpld0)/(10.0*gamma)))
-print ("maxDist:", maxDist)
+if (verbose>=1):
+    print ("maxDist:", maxDist)
 
 # base station placement
 bsx = maxDist+10
@@ -647,7 +651,8 @@ if (graphics == 1):
 env.run(until=simtime)
 
 # print stats and save into file
-print ("nrCollisions ", nrCollisions)
+if (verbose>=1):
+    print ("nrCollisions ", nrCollisions)
 
 # compute energy
 # Transmit consumption in mA from -2 to +17 dBm
@@ -669,19 +674,22 @@ energy_stb = sum(Tpream * Nstb *Istb * V * node.sent for node in nodes)
 energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*Tpream)*Isleep*V * node.sent for node in nodes)
 energy1 = energy_TxUL/1e6
 energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
-print ("energy (in J) in tx only: ", energy1)
-print (" total energy (in J): ", energy2)
-print ("sent packets: ", sent)
-print ("collisions: ", nrCollisions)
-print ("received packets: ", nrReceived)
-print ("processed packets: ", nrProcessed)
-print ("lost packets: ", nrLost)
+if (verbose>=1):
+    print ("energy (in J) in tx only: ", energy1)
+    print (" total energy (in J): ", energy2)
+    print ("sent packets: ", sent)
+    print ("collisions: ", nrCollisions)
+    print ("received packets: ", nrReceived)
+    print ("processed packets: ", nrProcessed)
+    print ("lost packets: ", nrLost)
 
 # data extraction rate
-der = (sent-nrCollisions)/float(sent)
-print ("DER:", der)
-der = (nrReceived)/float(sent)
-print ("DER method 2:", der)
+der1 = (sent-nrCollisions)/float(sent)
+if (verbose>=1):
+    print ("DER method 1:", der1)
+der2 = (nrReceived)/float(sent)
+if (verbose>=1):
+    print ("DER method 2:", der2)
 
 # this can be done to keep graphics visible
 if (graphics == 1):
@@ -689,15 +697,16 @@ if (graphics == 1):
 
 # save experiment data into a dat file that can be read by e.g. gnuplot
 # name of file would be:  exp0.dat for experiment 0
-fname = "exp" + str(experiment) + ".dat"
-print (fname)
+fname = "sim_results_exp" + str(experiment) + ".dat"
+if (verbose>=1):
+    print (fname)
 if os.path.isfile(fname):
-    res1 = "\n" + str(nrNodes) + " " + str(nrCollisions) + " "  + str(sent) + " " + str(energy1) + " " + str(energy2)
+    res1 = "\n" + str(simtime) + " " + str(avgSendTime) + " " + str(nrNodes) + " " + str(nrCollisions) + " " + str(nrReceived)  + " " + str(nrProcessed) + " " + str(nrLost) + " "  + str(sent) + " " + str(energy1) + " " + str(energy2) + " " + str(der1) + " " + str(der2)
     # res2 = "\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
 
 else:
-    res1 = "#nrNodes nrCollisions nrTransmissions OverallEnergy\n" + str(nrNodes) + " " + str(nrCollisions) + " "  + str(sent) + " " + str(energy1)
-    # res2 = "#nrNodes nrCollisions nrTransmissions OverallEnergy\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
+    res1 = "#simtime avgSendTime nrNodes nrCollisions nrReceived nrProcessed nrLost nrTransmissions OverallEnergy1 OverallEnergy2 der1 der2 \n" + str(simtime) + " " + str(avgSendTime) + " " + str(nrNodes) + " " + str(nrCollisions) + " " + str(nrReceived)  + " " + str(nrProcessed) + " " + str(nrLost) + " "  + str(sent) + " " + str(energy1) + " " + str(energy2) + " " + str(der1) + " " + str(der2)
+    # res2 = "#simtime avgSendTime nrNodes nrCollisions nrReceived nrProcessed nrLost nrTransmissions OverallEnergy\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
 with open(fname, "a") as myfile:
     myfile.write(res1)
     #myfile.write(res2)
