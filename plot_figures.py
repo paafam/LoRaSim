@@ -12,7 +12,7 @@ import os
 result_filepath = './sim_results_exp1.dat'
 # we perform 100 simulation realization for each number of nodes from 100 to 1600
 # the number of realization should be updated according to the simulation results in the result file
-nrRealization = 100
+nrRealization = 10
 
 # Read data from sim_results_file
 simtime, avgSendTime, nrNodes, nrCollisions, nrReceived, nrProcessed, nrLost, nrTransmissions, OverallEnergy1, OverallEnergy2, der1, der2 = np.loadtxt(result_filepath, unpack=True)
@@ -31,7 +31,7 @@ plt.xlabel('Nodes')
 plt.ylabel('Overall Energy')
 plt.title('Raw Data')
 plt.savefig(path+"/OverallEnergy_consumption_raw.png")
-#plt.show()
+# plt.show()
 
 # plot mean data 
 nodes = np.unique(nrNodes)
