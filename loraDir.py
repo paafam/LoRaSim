@@ -122,7 +122,7 @@ def checkcollision(packet):
     col = 0  # flag needed since there might be several collisions for packet
     processing = 0
     for i in range(0, len(packetsAtBS)):
-        if packetsAtBS[i].packet.processed == 1:
+        if packetsAtBS[i].ul_packet.processed == 1:
             processing = processing + 1
     if (processing > maxBSReceives):
         if (verbose >= 1):
@@ -138,14 +138,14 @@ def checkcollision(packet):
         for other in packetsAtBS:
             if other.nodeid != packet.nodeid:
                 if (verbose >= 1):
-                    print("INFO: >> node {} (sf:{} bw:{} freq:{:.6e})".format(other.nodeid, other.packet.sf,
-                                                                              other.packet.bw, other.packet.freq))
+                    print("INFO: >> node {} (sf:{} bw:{} freq:{:.6e})".format(other.nodeid, other.ul_packet.sf,
+                                                                              other.ul_packet.bw, other.ul_packet.freq))
                 # simple collision
-                if frequencyCollision(packet, other.packet) and sfCollision(packet, other.packet):
+                if frequencyCollision(packet, other.ul_packet) and sfCollision(packet, other.ul_packet):
                     if full_collision:
-                        if timingCollision(packet, other.packet):
+                        if timingCollision(packet, other.ul_packet):
                             # check who collides in the power domain
-                            c = powerCollision(packet, other.packet)
+                            c = powerCollision(packet, other.ul_packet)
                             # mark all the collided packets
                             # either this one, the other one, or both
                             for p in c:
@@ -157,7 +157,7 @@ def checkcollision(packet):
                             pass
                     else:
                         packet.collided = 1
-                        other.packet.collided = 1  # other also got lost, if it wasn't lost already
+                        other.ul_packet.collided = 1  # other also got lost, if it wasn't lost already
                         col = 1
         return col
     return 0
@@ -281,8 +281,9 @@ def airtime(sf, cr, pl, bw):
 # this function creates a node
 #
 class myNode():
-    def __init__(self, nodeid, bs, period, packetlen):
-        self.nodeid = nodeid
+    def __init__(self, node_id, node_class, bs, period, packetlen):
+        self.nodeid = node_id
+        self.nodeclass = node_class
         self.period = period
         self.bs = bs
         self.x = 0
@@ -329,13 +330,13 @@ class myNode():
 
         self.dist = np.sqrt((self.x - bsx) * (self.x - bsx) + (self.y - bsy) * (self.y - bsy))
         if (verbose >= 1):
-            print(('INFO: node %d' % nodeid, "x", self.x, "y", self.y, "dist: ", self.dist))
+            print(('INFO: node %d' % node_id, "x", self.x, "y", self.y, "dist: ", self.dist))
         if sim_scenario == 0:
-            self.packet = myPacket(self.nodeid, packetlen, self.dist,'unconfirmed')
+            self.ul_packet = myPacket(self.nodeid, packetlen, self.dist,'unconfirmed')
         elif sim_scenario == 1:
-            self.packet = myPacket(self.nodeid, packetlen, self.dist,'confirmed')
+            self.ul_packet = myPacket(self.nodeid, packetlen, self.dist,'confirmed')
         elif sim_scenario == 2:
-            self.packet = myPacket(self.nodeid, packetlen, self.dist,'confirmed')
+            self.ul_packet = myPacket(self.nodeid, packetlen, self.dist,'confirmed')
         self.sent = 0
         # number of DL ACK received by the node
         # This is required for confirmed frame only
@@ -370,6 +371,8 @@ class myPacket():
         global GL
 
         self.nodeid = nodeid
+
+
         self.txpow = Ptx
 
         self.MType = frame_type
@@ -538,13 +541,13 @@ def transmit(env, node):
             print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_done, packet is sent')
 
         # save frequency channels usage freq: 860000000, 864000000, 868000000
-        if node.packet.freq == 860000000:
+        if node.ul_packet.freq == 860000000:
             node.freq_usage[0] += 1
             global_freq_usage[0] += 1
-        elif node.packet.freq == 864000000:
+        elif node.ul_packet.freq == 864000000:
             node.freq_usage[1] += 1
             global_freq_usage[1] += 1
-        elif node.packet.freq == 868000000:
+        elif node.ul_packet.freq == 868000000:
             node.freq_usage[2] += 1
             global_freq_usage[2] += 1
 
@@ -552,35 +555,35 @@ def transmit(env, node):
             if verbose >= 2:
                 print("[ERROR] - packet already in")
         else:
-            sensitivity = sensi[node.packet.sf - 7, [125, 250, 500].index(node.packet.bw) + 1]
-            if node.packet.rssi < sensitivity:
+            sensitivity = sensi[node.ul_packet.sf - 7, [125, 250, 500].index(node.ul_packet.bw) + 1]
+            if node.ul_packet.rssi < sensitivity:
                 if verbose >= 1:
                     print("[INFO] - node {}: packet will be lost").format(node.nodeid)
-                node.packet.lost = True
+                node.ul_packet.lost = True
             else:
-                node.packet.lost = False
+                node.ul_packet.lost = False
                 # adding packet if no collision
-                if checkcollision(node.packet) == 1:
-                    node.packet.collided = 1
+                if checkcollision(node.ul_packet) == 1:
+                    node.ul_packet.collided = 1
                 else:
-                    node.packet.collided = 0
+                    node.ul_packet.collided = 0
                 packetsAtBS.append(node)
-                node.packet.addTime = env.now
+                node.ul_packet.addTime = env.now
                 if verbose >= 3:
                     print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> packet in BS queue')
 
-        yield env.timeout(node.packet.rectime)
+        yield env.timeout(node.ul_packet.rectime)
 
-        if node.packet.lost:
+        if node.ul_packet.lost:
             global nrLost
             nrLost += 1
-        if node.packet.collided == 1:
+        if node.ul_packet.collided == 1:
             global nrCollisions
             nrCollisions = nrCollisions + 1
-        if node.packet.collided == 0 and not node.packet.lost:
+        if node.ul_packet.collided == 0 and not node.ul_packet.lost:
             global nrReceived
             nrReceived = nrReceived + 1
-        if node.packet.processed == 1:
+        if node.ul_packet.processed == 1:
             global nrProcessed
             nrProcessed = \
                 nrProcessed + 1
@@ -596,15 +599,15 @@ def transmit(env, node):
                     node.nodeid) + '--> packet successfully received by BS')
 
         # Check if an ack frame is needed
-        if node.packet.MType == 'confirmed' and node.packet.collided == 0 and not node.packet.lost:
+        if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
             node.ack_received += 1
             print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
                 node.nodeid) + '--> ACK successfully received by Node')
 
         # reset the packet
-        node.packet.collided = 0
-        node.packet.processed = 0
-        node.packet.lost = False
+        node.ul_packet.collided = 0
+        node.ul_packet.processed = 0
+        node.ul_packet.lost = False
 
 
 
@@ -643,6 +646,7 @@ else:
 # global stuff
 # Rnd = random.seed(12345)
 nodes = []
+lorawan_class = 'Class_A'
 packetsAtBS = []
 env = simpy.Environment()
 
@@ -703,7 +707,7 @@ if loadNodesLocation:
 for i in range(0, nrNodes):
     # myNode takes period (in ms), base station id packetlen (in Bytes)
     # 1000000 = 16 min
-    node = myNode(i, bsId, avgSendTime, 20)
+    node = myNode(i, lorawan_class, bsId, avgSendTime, 20)
     nodes.append(node)
     env.process(transmit(env, node))
 
@@ -735,11 +739,11 @@ Istb = 1.6  # according to the datasheet this is the supply current in standby m
 Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
 Nstb = 2  # number of stanby mode, nodes go two time in standby mode
 sent = sum(n.sent for n in nodes)
-energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
+energy_TxUL = sum(node.ul_packet.rectime * TX[int(node.ul_packet.txpow) + 2] * V * node.sent for node in nodes)
 energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
 energy_stb = sum(Tpream * Nstb * Istb * V * node.sent for node in nodes)
 energy_sleep = sum(
-    (avgSendTime - node.packet.rectime - idletime - Nstb * Tpream) * Isleep * V * node.sent for node in nodes)
+    (avgSendTime - node.ul_packet.rectime - idletime - Nstb * Tpream) * Isleep * V * node.sent for node in nodes)
 energy1 = energy_TxUL / 1e6
 energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep) / 1e6
 if (verbose >= 1):
