@@ -1,4 +1,5 @@
 *.dat
 .idea/
-*.txt
+.venv/
 figures/
+*.txt
