@@ -371,7 +371,6 @@ class myPacket():
 
         self.nodeid = nodeid
         self.txpow = Ptx
-        self.frame_type = 0
 
         self.MType = frame_type
 
