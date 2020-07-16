@@ -663,18 +663,34 @@ TX = [22, 22, 22, 23,                                      # RFO/PA0: -2..1
       105, 115, 125]                                       # PA_BOOST/PA1+PA2: 18..20
 # mA = 90    # current draw for TX = 17 dBm
 V = 3.0     # voltage XXX
-Iidle = 1.5 #according to the datasheet this is the supply current in the idle mode in mA
-idletime = 2000 # time in idle mode in ms
-Istb = 1.6 #according to the datasheet this is the supply current in standby mode in mA
-Isleep = 0.0002 #according to the datasheet this is the supply current in sleep mode in mA
-Nstb= 2 # number of stanby mode, nodes go two time in standby mode
+# if
+  # Iidle = 1.5 #according to the datasheet this is the supply current in the idle mode in mA
+  # idletime = 2000 # time in idle mode in ms
+  # Istb = 1.6 #according to the datasheet this is the supply current in standby mode in mA
+  # Isleep = 0.0002 #according to the datasheet this is the supply current in sleep mode in mA
+  # Nstb= 2 # number of stanby mode, nodes go two time in standby mode
+  # sent = sum(n.sent for n in nodes)
+  # energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow)+2] * V * node.sent for node in nodes)
+  # energy_idle = sum(idletime* Iidle * V * node.sent for node in nodes)
+  # energy_stb = sum(Tpream * Nstb *Istb * V * node.sent for node in nodes)
+  # energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*Tpream)*Isleep*V * node.sent for node in nodes)
+  # energy1 = energy_TxUL/1e6
+  # energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
+
+# else
+Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
+idletime = 1000  # time in idle mode in ms
+Ir = 11.5  # according to the datasheet this is the supply current in receive mode, LnaBoost ON,band 1 in mA
+Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
+Tr = airtime(12,4,13,125)
 sent = sum(n.sent for n in nodes)
-energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow)+2] * V * node.sent for node in nodes)
-energy_idle = sum(idletime* Iidle * V * node.sent for node in nodes)
-energy_stb = sum(Tpream * Nstb *Istb * V * node.sent for node in nodes)
-energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*Tpream)*Isleep*V * node.sent for node in nodes)
-energy1 = energy_TxUL/1e6
-energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
+energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
+energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
+energy_Rx1DL = sum(Tr* Ir * V * node.sent for node in nodes)
+energy_sleep = sum((avgSendTime - node.packet.rectime - idletime - Tr) * Isleep * V * node.sent for node in nodes)
+energy1 = energy_TxUL / 1e6
+energy2 = (energy_TxUL + energy_idle + energy_Rx1DL + energy_sleep) / 1e6
+
 if (verbose>=1):
     print ("energy (in J) in tx only: ", energy1)
     print (" total energy (in J): ", energy2)
