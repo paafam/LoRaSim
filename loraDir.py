@@ -184,7 +184,7 @@ def frequencyCollision(p1, p2):
                 print("INFO: frequency coll 125")
             return True
             # else:
-            if (verbose >= 1):
+            if verbose >= 1:
                 print("INFO: no frequency coll")
     return False
 
@@ -289,6 +289,9 @@ class myNode():
         self.x = 0
         self.y = 0
 
+        # This refers to the packet size of an ACK frame (i.e. without app payload)
+        dl_packetlen = 13
+
         # this is very complex prodecure for placing nodes
         # and ensure minimum distance between each pair of nodes
         found = 0
@@ -333,11 +336,16 @@ class myNode():
             print(('INFO: node %d' % node_id, "x", self.x, "y", self.y, "dist: ", self.dist))
         if sim_scenario == 0:
             self.ul_packet = myPacket(self.nodeid, packetlen, self.dist,'unconfirmed')
+            self.dl_packet = myPacket(self.nodeid, dl_packetlen, self.dist, 'unconfirmed')
         elif sim_scenario == 1:
             self.ul_packet = myPacket(self.nodeid, packetlen, self.dist,'confirmed')
+            self.dl_packet = myPacket(self.nodeid, dl_packetlen, self.dist, 'confirmed')
         elif sim_scenario == 2:
             self.ul_packet = myPacket(self.nodeid, packetlen, self.dist,'confirmed')
+            self.dl_packet = myPacket(self.nodeid, dl_packetlen, self.dist, 'confirmed')
+
         self.sent = 0
+
         # number of DL ACK received by the node
         # This is required for confirmed frame only
         self.ack_received = 0
@@ -348,6 +356,8 @@ class myNode():
         # freq_usage[2] = 868000000
         self.freq_usage = [0, 0, 0]
         self.freq_usage_ack_received = [0, 0, 0]
+
+        # Energy consumption
 
         # graphics for node
         global graphics
@@ -478,6 +488,29 @@ class myPacket():
         self.processed = 0
 
 
+# This function handle radio channel access according to MAC protocol selection
+def get_channel_access_instant(node, mac_protocol):
+    nextTxInstant = 0
+    if mac_protocol == 0:
+        # Pure Aloha protocol
+        nextTxInstant = random.expovariate(1.0 / float(node.period))
+
+
+    elif mac_protocol == 1:
+        # Slotted Aloha proocol
+        nextTxInstant = random.expovariate(1.0 / float(node.period))
+        if not (nextTxInstant in txInstantVector):
+            delayTime = slot_time - (nextTxInstant % slot_time)
+            nextTxInstant = nextTxInstant + delayTime
+            if (verbose >= 3):
+                print('[DEBUG] - X --- Node ' + str(node.nodeid) + 'transmission of the packet is delayed of ', delayTime, '[s]')
+    else:
+        # Default MAC protocol : Pure Aloha
+        # Pure Aloha protocol
+        nextTxInstant = random.expovariate(1.0 / float(node.period))
+
+    return nextTxInstant
+
 #
 # main discrete event loop, runs for each node
 # a global list of packet being processed at the gateway
@@ -500,109 +533,106 @@ def transmit(env, node):
         global txInstantVector
         global slot_time
         global verbose
-        # A = random.expovariate(1.0 / float(node.period))
-        if verbose >= 3:
-            print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_starting')
-        if mac_protocol == 0:
-            # Pure Aloha protocol
-            nextTxInstant = random.expovariate(1.0 / float(node.period))
+
+        # Transmission procedure depends on LORAWAN node classes
+        if node.nodeclass == 'Class_C':
+            # TODO: Implementation of LORAWAN Class C
             if verbose >= 3:
-                print('[DEBUG] - ' + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> transmission is scheduled at ', env.now + nextTxInstant)
-
-            yield env.timeout(nextTxInstant)
-        elif mac_protocol == 1:
-            # Slotted Aloha proocol
-            nextTxInstant = random.expovariate(1.0 / float(node.period))
-            if nextTxInstant in txInstantVector:
-                if (verbose >= 1):
-                    print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
-
-                yield env.timeout(nextTxInstant)
-            else:
-                delayTime = slot_time - (nextTxInstant % slot_time)
-                nextTxInstant = nextTxInstant + delayTime
-                if (verbose >= 1):
-                    print("INFO: transmission of the packet is delayed of ", delayTime, "[ s]")
-                    print("INFO: new transmission is scheduled at ", env.now + nextTxInstant)
-                yield env.timeout(nextTxInstant)
+                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> Class_C')
+        elif node.nodeclass == 'Class_B':
+            # TODO: Implementation of LORAWAN Class B
+            if verbose >= 3:
+                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> Class_B')
         else:
-            # Default MAC protocol : Pure Aloha
-            # Pure Aloha protocol
-            nextTxInstant = random.expovariate(1.0 / float(node.period))
-            if (verbose >= 1):
-                print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
+            # Default is Class A
+            if verbose >= 3:
+                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> Class_B')
+                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_starting')
+
+            # Step 1 : Choose an arbitrary instant to transmit according to  MAC protocol
+            nextTxInstant = get_channel_access_instant(node,mac_protocol)
+            if verbose >= 3:
+                print('[DEBUG] - --- Node ' + str(node.nodeid) + ' --> transmission is scheduled at ',
+                      env.now + nextTxInstant)
+            # wait until that instant, then send packet
             yield env.timeout(nextTxInstant)
 
-        # time sending and receiving
-        # packet arrives -> add to base station
 
-        node.sent = node.sent + 1
-        if verbose >= 3:
-            print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_done, packet is sent')
+            # time sending and receiving
 
-        # save frequency channels usage freq: 860000000, 864000000, 868000000
-        if node.ul_packet.freq == 860000000:
-            node.freq_usage[0] += 1
-            global_freq_usage[0] += 1
-        elif node.ul_packet.freq == 864000000:
-            node.freq_usage[1] += 1
-            global_freq_usage[1] += 1
-        elif node.ul_packet.freq == 868000000:
-            node.freq_usage[2] += 1
-            global_freq_usage[2] += 1
 
-        if node in packetsAtBS:
-            if verbose >= 2:
-                print("[ERROR] - packet already in")
-        else:
-            sensitivity = sensi[node.ul_packet.sf - 7, [125, 250, 500].index(node.ul_packet.bw) + 1]
-            if node.ul_packet.rssi < sensitivity:
-                if verbose >= 1:
-                    print("[INFO] - node {}: packet will be lost").format(node.nodeid)
-                node.ul_packet.lost = True
+            # Step 2 : send packet
+            node.sent = node.sent + 1
+            if verbose >= 3:
+                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_done, packet is sent')
+
+            # save frequency channels usage freq: 860000000, 864000000, 868000000
+            if node.ul_packet.freq == 860000000:
+                node.freq_usage[0] += 1
+                global_freq_usage[0] += 1
+            elif node.ul_packet.freq == 864000000:
+                node.freq_usage[1] += 1
+                global_freq_usage[1] += 1
+            elif node.ul_packet.freq == 868000000:
+                node.freq_usage[2] += 1
+                global_freq_usage[2] += 1
+
+            # Step 3 : wait packet to arrive at base station, then add packet to BS processing queue
+            # packet arrives -> add to base station
+            if node in packetsAtBS:
+                if verbose >= 2:
+                    print("[ERROR] - packet already in")
             else:
-                node.ul_packet.lost = False
-                # adding packet if no collision
-                if checkcollision(node.ul_packet) == 1:
-                    node.ul_packet.collided = 1
+                sensitivity = sensi[node.ul_packet.sf - 7, [125, 250, 500].index(node.ul_packet.bw) + 1]
+                if node.ul_packet.rssi < sensitivity:
+                    if verbose >= 1:
+                        print("[INFO] - node {}: packet will be lost").format(node.nodeid)
+                    node.ul_packet.lost = True
                 else:
-                    node.ul_packet.collided = 0
-                packetsAtBS.append(node)
-                node.ul_packet.addTime = env.now
+                    node.ul_packet.lost = False
+                    # adding packet if no collision
+                    if checkcollision(node.ul_packet) == 1:
+                        node.ul_packet.collided = 1
+                    else:
+                        node.ul_packet.collided = 0
+                    packetsAtBS.append(node)
+                    node.ul_packet.addTime = env.now
+                    if verbose >= 3:
+                        print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> packet in BS queue')
+
+            yield env.timeout(node.ul_packet.rectime)
+
+            # Step 4 : Process packet at BS
+            if node.ul_packet.lost:
+                global nrLost
+                nrLost += 1
+            if node.ul_packet.collided == 1:
+                global nrCollisions
+                nrCollisions = nrCollisions + 1
+            if node.ul_packet.collided == 0 and not node.ul_packet.lost:
+                global nrReceived
+                nrReceived = nrReceived + 1
+            if node.ul_packet.processed == 1:
+                global nrProcessed
+                nrProcessed = \
+                    nrProcessed + 1
+
+            # complete packet has been received by base station
+            # can remove it
+            if node in packetsAtBS:
+                packetsAtBS.remove(node)
                 if verbose >= 3:
-                    print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> packet in BS queue')
+                    print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> packet removed from BS '
+                                                                                          'queue')
+                    print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
+                        node.nodeid) + '--> packet successfully received by BS')
 
-        yield env.timeout(node.ul_packet.rectime)
+            # Check if an ack frame is needed
+            if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
+                node.ack_received += 1
 
-        if node.ul_packet.lost:
-            global nrLost
-            nrLost += 1
-        if node.ul_packet.collided == 1:
-            global nrCollisions
-            nrCollisions = nrCollisions + 1
-        if node.ul_packet.collided == 0 and not node.ul_packet.lost:
-            global nrReceived
-            nrReceived = nrReceived + 1
-        if node.ul_packet.processed == 1:
-            global nrProcessed
-            nrProcessed = \
-                nrProcessed + 1
-
-        # complete packet has been received by base station
-        # can remove it
-        if node in packetsAtBS:
-            packetsAtBS.remove(node)
-            if verbose >= 3:
-                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> packet removed from BS '
-                                                                                      'queue')
-                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
-                    node.nodeid) + '--> packet successfully received by BS')
-
-        # Check if an ack frame is needed
-        if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
-            node.ack_received += 1
-            print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
-                node.nodeid) + '--> ACK successfully received by Node')
+             
+            print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> ACK successfully received by Node')
 
         # reset the packet
         node.ul_packet.collided = 0
