@@ -71,7 +71,7 @@ import os
 # 2 : ERROR mode : only error messages are printed
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
-verbose = 3
+verbose = 0
 Tpream = 0
 
 
@@ -595,10 +595,12 @@ def transmit(env, node):
                 print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
                     node.nodeid) + '--> packet successfully received by BS')
 
+
         # Check if an ack frame is needed
         if node.packet.MType == 'confirmed' and node.packet.collided == 0 and not node.packet.lost:
             node.ack_received += 1
-            print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
+            if verbose >= 3:
+              print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
                 node.nodeid) + '--> ACK successfully received by Node')
 
         # reset the packet
@@ -754,11 +756,12 @@ sent = sum(n.sent for n in nodes)
 energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
 energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
 energy_Rx1DL = sum(Tr* Ir * V * node.sent for node in nodes)
+energy_Rx1DL = sum(Tr* Ir * V * node.sent for node in nodes)
 energy_sleep = sum((avgSendTime - node.packet.rectime - idletime - Tr) * Isleep * V * node.sent for node in nodes)
 energy1 = energy_TxUL / 1e6
 energy2 = (energy_TxUL + energy_idle + energy_Rx1DL + energy_sleep) / 1e6
 
-if (verbose>=1):
+if (verbose>=0):
     print ("energy (in J) in tx only: ", energy1)
     print (" total energy (in J): ", energy2)
     print ("sent packets: ", sent)
