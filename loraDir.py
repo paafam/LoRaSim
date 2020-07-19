@@ -340,6 +340,8 @@ class myNode():
         # number of DL ACK received by the node
         # This is required for confirmed frame only
         self.ack_received = 0
+        # This is required for confirmed frame which are in collison
+        self.nack_received = 0
 
         # Node frequency usage. Incremented each time a packet is sent using one of these frequency channels
         # freq_usage[0] = 860000000,
@@ -599,6 +601,8 @@ def transmit(env, node):
         # Check if an ack frame is needed
         if node.packet.MType == 'confirmed' and node.packet.collided == 0 and not node.packet.lost:
             node.ack_received += 1
+        else:
+            node.nack_received += 1
             if verbose >= 3:
               print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
                 node.nodeid) + '--> ACK successfully received by Node')
@@ -732,34 +736,51 @@ TX = [22, 22, 22, 23,  # RFO/PA0: -2..1
 # mA = 90    # current draw for TX = 17 dBm
 
 V = 3.0     # voltage XXX
-# if
-  # Iidle = 1.5 #according to the datasheet this is the supply current in the idle mode in mA
-  # idletime = 2000 # time in idle mode in ms
-  # Istb = 1.6 #according to the datasheet this is the supply current in standby mode in mA
-  # Isleep = 0.0002 #according to the datasheet this is the supply current in sleep mode in mA
-  # Nstb= 2 # number of stanby mode, nodes go two time in standby mode
-  # sent = sum(n.sent for n in nodes)
-  # energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow)+2] * V * node.sent for node in nodes)
-  # energy_idle = sum(idletime* Iidle * V * node.sent for node in nodes)
-  # energy_stb = sum(Tpream * Nstb *Istb * V * node.sent for node in nodes)
-  # energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*Tpream)*Isleep*V * node.sent for node in nodes)
-  # energy1 = energy_TxUL/1e6
-  # energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
+if (sim_scenario == 0):
+ Iidle = 1.5 #according to the datasheet this is the supply current in the idle mode in mA
+ idletime = 2000 # time in idle mode in ms
+ Istb = 1.6 #according to the datasheet this is the supply current in standby mode in mA
+ Isleep = 0.0002 #according to the datasheet this is the supply current in sleep mode in mA
+ Nstb= 2 # number of stanby mode, nodes go two time in standby mode
+ sent = sum(n.sent for n in nodes)
+ energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow)+2] * V * node.sent for node in nodes)
+ energy_idle = sum(idletime* Iidle * V * node.sent for node in nodes)
+ energy_stb = sum(Tpream * Nstb *Istb * V * node.sent for node in nodes)
+ energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*Tpream)*Isleep*V * node.sent for node in nodes)
+ energy1 = energy_TxUL/1e6
+ energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
+elif (sim_scenario == 1):
+   Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
+   idletime = 1000  # time in idle mode in ms
+   Istb = 1.6  # according to the datasheet this is the supply current in standby mode in mA
+   Ir = 11.5  # according to the datasheet this is the supply current in receive mode, LnaBoost ON,band 1 in mA
+   Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
+   Nstb = 2  # number of stanby mode, nodes go two time in standby mode
+   Tr = airtime(12,4,13,125)
+   sent = sum(n.sent for n in nodes)
+   ack_received = sum(n.ack_received for n in nodes)
+   energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
+   energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
+   energy_Rx1DL = sum(Tr* Ir * V * node.ack_received for node in nodes)
+   energy_stb = sum(Tpream * Nstb * Istb * V * node.nack_received for node in nodes)
+   energy_sleep = sum((avgSendTime - node.packet.rectime - idletime - Tr) * Isleep * V * node.sent for node in nodes)
+   energy1 = energy_TxUL / 1e6
+   energy2 = (energy_TxUL + energy_idle + energy_Rx1DL + energy_sleep) / 1e6
 
-# else
-Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
-idletime = 1000  # time in idle mode in ms
-Ir = 11.5  # according to the datasheet this is the supply current in receive mode, LnaBoost ON,band 1 in mA
-Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
-Tr = airtime(12,4,13,125)
-sent = sum(n.sent for n in nodes)
-energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
-energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
-energy_Rx1DL = sum(Tr* Ir * V * node.sent for node in nodes)
-energy_Rx1DL = sum(Tr* Ir * V * node.sent for node in nodes)
-energy_sleep = sum((avgSendTime - node.packet.rectime - idletime - Tr) * Isleep * V * node.sent for node in nodes)
-energy1 = energy_TxUL / 1e6
-energy2 = (energy_TxUL + energy_idle + energy_Rx1DL + energy_sleep) / 1e6
+elif (sim_scenario == 2):
+   Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
+   idletime = 1000  # time in idle mode in ms
+   Ir = 11.5  # according to the datasheet this is the supply current in receive mode, LnaBoost ON,band 1 in mA
+   Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
+   Tr = airtime(12, 4, 13, 125)
+   sent = sum(n.sent for n in nodes)
+   ack_received = sum(n.ack_received for n in nodes)
+   energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
+   energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
+   energy_Rx1DL = sum(Tr * Ir * V * node.ack_received for node in nodes)
+   energy_sleep = sum((avgSendTime - node.packet.rectime - idletime - Tr) * Isleep * V * node.sent for node in nodes)
+   energy1 = energy_TxUL / 1e6
+   energy2 = (energy_TxUL + energy_idle + energy_Rx1DL + energy_sleep) / 1e6
 
 if (verbose>=0):
     print ("energy (in J) in tx only: ", energy1)
