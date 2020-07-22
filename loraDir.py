@@ -78,12 +78,19 @@ Tpream = 0
 RX1_DELAY = 1000    # RX1 Delay in ms
 RX2_DELAY = 2000    # RX2 Delay in ms
 
+# Transmit consumption in mA from -2 to +17 dBm
+TX = [22, 22, 22, 23,  # RFO/PA0: -2..1
+      24, 24, 24, 25, 25, 25, 25, 26, 31, 32, 34, 35, 44,  # PA_BOOST/PA1: 2..14
+      82, 85, 90,  # PA_BOOST/PA1: 15..17
+      105, 115, 125]  # PA_BOOST/PA1+PA2: 18..20
+# mA = 90    # current draw for TX = 17 dBm
+
 
 # Simulation scenario
 # 0 : all frame are unconfirmed frame
 # 1 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the first RX1 window
 # 2 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the second RX2 window
-sim_scenario = 1
+sim_scenario = 0
 
 # MAC protocol selection
 # 0 : Pure Aloha
@@ -260,6 +267,7 @@ def timingCollision(p1, p2):
 # according to LoraDesignGuide_STD.pdf
 #
 def airtime(sf, cr, pl, bw):
+    global Tpream
     H = 0  # implicit header disabled (H=0) or not (H=1)
     DE = 0  # low data rate optimization enabled (=1) or not (=0)
     Npream = 8  # number of preamble symbol (12.25  from Utz paper)
@@ -294,6 +302,9 @@ class myNode():
         self.y = 0
 
 
+
+
+
         # This refers to the packet size of an ACK frame (i.e. without app payload)
         dl_packetlen = 13
 
@@ -304,6 +315,7 @@ class myNode():
         global nodes
         global nodesPosition
         global loadNodesLocation
+        global TX
 
         if loadNodesLocation:
             self.x = nodesPosition[nodeid][0]
@@ -363,7 +375,22 @@ class myNode():
         self.freq_usage_ack_received = [0, 0, 0]
 
         # Energy consumption
+        self.Voltage = 3.0  # node voltage
+        self.Tx_time = 0  # time unit is in ms
+        self.Rx_time = 0
+        self.Idle_time = 0.0
+        self.Sleep_time = 0.0
+        self.Stdby_time = 0.0
 
+        self.I_Tx = TX[int(self.ul_packet.txpow) + 2]  # current unit is in mA
+        self.I_Rx = 0.0
+        self.I_Idle = 1.5
+        self.I_Sleep = 0.0002
+        self.I_Stdby = 1.6
+
+        self.goto_sleep_instant = 0.0
+
+        self.energy = 0.0
         # graphics for node
         global graphics
         if (graphics == 1):
@@ -560,6 +587,7 @@ def transmit(env, node):
                 print('[DEBUG] - --- Node ' + str(node.nodeid) + ' --> transmission is scheduled at ',
                       env.now + nextTxInstant)
             # wait until that instant, then send the packet
+            node.Sleep_time += (env.now + nextTxInstant) - node.goto_sleep_instant
             yield env.timeout(nextTxInstant)
 
 
@@ -604,7 +632,7 @@ def transmit(env, node):
                     node.ul_packet.addTime = env.now
                     if verbose >= 3:
                         print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> packet in BS queue')
-
+            node.Tx_time += node.ul_packet.rectime
             yield env.timeout(node.ul_packet.rectime)
 
             # Step 4 : Process packet at BS
@@ -630,8 +658,10 @@ def transmit(env, node):
                     print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> packet removed from BS '
                                                                                           'queue')
                     print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
-                        node.nodeid) + '--> packet successfully received by BS')
+                        node.nodeid) + '--> packet received by BS')
+
             # Step 5 : Wait RX1_DELAY to open first receive window and RX2_DELAY to open second RX window
+            node.Idle_time += RX1_DELAY
             yield env.timeout(RX1_DELAY)
             if verbose >= 3:
                 print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> Opening RX1 window')
@@ -639,23 +669,57 @@ def transmit(env, node):
             if sim_scenario == 1 :
                 # ACK is received in the first RX window
                 if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
+                    # Packet is successfully received by BS, ACK packet can now be sent
                     node.ack_received += 1
+                    # Wait for packet to be received
+                    node.Rx_time += node.dl_packet.rectime
+                    yield env.timeout(node.dl_packet.rectime)
+                    node.goto_sleep_instant = env.now
                     if verbose >= 3:
                         print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> ACK successfully received by Node')
+                else :
+                    # Packet is not successfully received by BS, but RX2 window should be opened
+                    node.Stdby_time += Tpream
+                    yield env.timeout(Tpream)
+                    node.Idle_time += RX2_DELAY - RX1_DELAY
+                    yield env.timeout(RX2_DELAY - RX1_DELAY)
+                    node.Stdby_time += Tpream
+                    yield env.timeout(Tpream)
+                    node.goto_sleep_instant = env.now
+                    if verbose >= 3:
+                        print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> Opening RX2 window')
             elif sim_scenario == 2:
-                # ACK is received in the second RX window
+                # ACK is received in the second RX2 window
+                node.Stdby_time += Tpream
+                yield env.timeout(Tpream)
+                node.Idle_time += RX2_DELAY - RX1_DELAY
                 yield env.timeout(RX2_DELAY - RX1_DELAY)
                 if verbose >= 3:
                     print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> Opening RX2 window')
                 if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
                     node.ack_received += 1
+                    # Wait for packet to be received
+                    node.Rx_time += node.dl_packet.rectime
+                    yield env.timeout(node.dl_packet.rectime)
+                    node.goto_sleep_instant = env.now
                     if verbose >= 3:
                         print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> ACK successfully received by Node')
+                else:
+                    # Packet is not successfully received by BS, no ACK is sent
+                    node.Stdby_time += Tpream
+                    yield env.timeout(Tpream)
+                    node.goto_sleep_instant = env.now
             else:
                 # no ACK is received
+                node.Stdby_time += Tpream
+                yield env.timeout(Tpream)
+                node.Idle_time += RX2_DELAY - RX1_DELAY
                 yield env.timeout(RX2_DELAY - RX1_DELAY)
                 if verbose >= 3:
                     print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> Opening RX2 window')
+                node.Stdby_time += Tpream
+                yield env.timeout(Tpream)
+                node.goto_sleep_instant = env.now
 
 
         # reset the packet
@@ -780,12 +844,7 @@ if (verbose >= 1):
     print("nrCollisions ", nrCollisions)
 
 # compute energy
-# Transmit consumption in mA from -2 to +17 dBm
-TX = [22, 22, 22, 23,  # RFO/PA0: -2..1
-      24, 24, 24, 25, 25, 25, 25, 26, 31, 32, 34, 35, 44,  # PA_BOOST/PA1: 2..14
-      82, 85, 90,  # PA_BOOST/PA1: 15..17
-      105, 115, 125]  # PA_BOOST/PA1+PA2: 18..20
-# mA = 90    # current draw for TX = 17 dBm
+
 V = 3.0  # voltage XXX
 Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
 idletime = 2000  # time in idle mode in ms
@@ -794,15 +853,21 @@ Isleep = 0.0002  # according to the datasheet this is the supply current in slee
 Nstb = 2  # number of stanby mode, nodes go two time in standby mode
 sent = sum(n.sent for n in nodes)
 energy_TxUL = sum(node.ul_packet.rectime * TX[int(node.ul_packet.txpow) + 2] * V * node.sent for node in nodes)
+energy_TxUL1 = sum(node.Tx_time * node.I_Tx * node.Voltage for node in nodes)
 energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
+energy_idle1 = sum(node.Idle_time * node.I_Idle * node.Voltage for node in nodes )
 energy_stb = sum(Tpream * Nstb * Istb * V * node.sent for node in nodes)
+energy_stb1 = sum(node.Stdby_time * node.I_Stdby * node.Voltage for node in nodes)
 energy_sleep = sum(
     (avgSendTime - node.ul_packet.rectime - idletime - Nstb * Tpream) * Isleep * V * node.sent for node in nodes)
+energy_sleep1 = sum(node.Sleep_time * node.I_Sleep * node.Voltage for node in nodes)
 energy1 = energy_TxUL / 1e6
 energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep) / 1e6
+energy3 = (energy_TxUL1 + energy_idle1 + energy_stb1 + energy_sleep) / 1e6
 if (verbose >= 1):
     print("energy (in J) in tx only: ", energy1)
-    print(" total energy (in J): ", energy2)
+    print(" total energy IF (in J): ", energy2)
+    print(" total energy PAF (in J): ", energy3)
     print("sent packets: ", sent)
     print("collisions: ", nrCollisions)
     print("received packets: ", nrReceived)
