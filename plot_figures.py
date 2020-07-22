@@ -15,7 +15,7 @@ result_filepath = './sim_results_exp1.dat'
 nrRealization = 10
 
 # Read data from sim_results_file
-simtime, avgSendTime, nrNodes, nrCollisions, nrReceived, nrProcessed, nrLost, nrTransmissions, OverallEnergy1, OverallEnergy2, der1, der2 = np.loadtxt(result_filepath, unpack=True)
+simtime, avgSendTime, nrNodes, nrCollisions, nrReceived, nrProcessed, nrLost, nrTransmissions, OverallEnergy1, OverallEnergyT, der1, der2 = np.loadtxt(result_filepath, unpack=True)
 
 # Create figure directory to save figures
 dirname = "figures"
@@ -26,7 +26,7 @@ if os.path.isdir(path)==False:
 
 # plot raw data
 plt.figure(1)
-plt.plot(nrNodes, OverallEnergy1, 'r--', nrNodes, OverallEnergy2, 'b')
+plt.plot(nrNodes, OverallEnergy1, 'r--', nrNodes, OverallEnergyT, 'b')
 plt.xlabel('Nodes')
 plt.ylabel('Overall Energy')
 plt.title('Raw Data')
@@ -36,12 +36,12 @@ plt.savefig(path+"/OverallEnergy_consumption_raw.png")
 # plot mean data 
 nodes = np.unique(nrNodes)
 m_energy1 = np.mean(np.reshape(OverallEnergy1, [nodes.size,nrRealization]),1)
-m_energy2 = np.mean(np.reshape(OverallEnergy2, [nodes.size,nrRealization]),1)
+m_energyT = np.mean(np.reshape(OverallEnergyT, [nodes.size,nrRealization]),1)
 m_der1 = np.mean(np.reshape(der1, [nodes.size,nrRealization]),1)
 m_der2 = np.mean(np.reshape(der2, [nodes.size,nrRealization]),1)
 
 plt.figure(2)
-plt.plot(nodes, m_energy1, 'r--', nodes, m_energy2, 'b')
+plt.plot(nodes, m_energy1, 'r--', nodes, m_energyT, 'b')
 plt.xlabel('Nodes')
 plt.ylabel('Overall Energy')
 plt.title('Mean Data')
