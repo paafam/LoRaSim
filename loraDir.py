@@ -72,7 +72,11 @@ import os
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
 verbose = 3
+
 Tpream = 0
+
+RX1_DELAY = 1000    # RX1 Delay in ms
+RX2_DELAY = 2000    # RX2 Delay in ms
 
 
 # Simulation scenario
@@ -288,6 +292,7 @@ class myNode():
         self.bs = bs
         self.x = 0
         self.y = 0
+
 
         # This refers to the packet size of an ACK frame (i.e. without app payload)
         dl_packetlen = 13
@@ -546,7 +551,7 @@ def transmit(env, node):
         else:
             # Default is Class A
             if verbose >= 3:
-                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> Class_B')
+                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> Class_A')
                 print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_starting')
 
             # Step 1 : Choose an arbitrary instant to transmit according to  MAC protocol
@@ -554,7 +559,7 @@ def transmit(env, node):
             if verbose >= 3:
                 print('[DEBUG] - --- Node ' + str(node.nodeid) + ' --> transmission is scheduled at ',
                       env.now + nextTxInstant)
-            # wait until that instant, then send packet
+            # wait until that instant, then send the packet
             yield env.timeout(nextTxInstant)
 
 
@@ -626,13 +631,32 @@ def transmit(env, node):
                                                                                           'queue')
                     print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
                         node.nodeid) + '--> packet successfully received by BS')
-
+            # Step 5 : Wait RX1_DELAY to open first receive window and RX2_DELAY to open second RX window
+            yield env.timeout(RX1_DELAY)
+            if verbose >= 3:
+                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> Opening RX1 window')
             # Check if an ack frame is needed
-            if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
-                node.ack_received += 1
+            if sim_scenario == 1 :
+                # ACK is received in the first RX window
+                if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
+                    node.ack_received += 1
+                    if verbose >= 3:
+                        print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> ACK successfully received by Node')
+            elif sim_scenario == 2:
+                # ACK is received in the second RX window
+                yield env.timeout(RX2_DELAY - RX1_DELAY)
+                if verbose >= 3:
+                    print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> Opening RX2 window')
+                if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
+                    node.ack_received += 1
+                    if verbose >= 3:
+                        print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> ACK successfully received by Node')
+            else:
+                # no ACK is received
+                yield env.timeout(RX2_DELAY - RX1_DELAY)
+                if verbose >= 3:
+                    print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> Opening RX2 window')
 
-             
-            print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> ACK successfully received by Node')
 
         # reset the packet
         node.ul_packet.collided = 0
