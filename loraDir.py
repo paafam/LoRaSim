@@ -79,7 +79,7 @@ Tpream = 0
 # 0 : all frame are unconfirmed frame
 # 1 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the first RX1 window
 # 2 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the second RX2 window
-sim_scenario = 1
+sim_scenario = 2
 
 # MAC protocol selection
 # 0 : Pure Aloha
@@ -751,7 +751,8 @@ if (sim_scenario == 0):
  energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
 elif (sim_scenario == 1):
    Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
-   idletime = 1000  # time in idle mode in ms
+   idletime1 = 1000  # time in idle mode in ms
+   idletime2 = 2000  # time in idle mode in ms
    Istb = 1.6  # according to the datasheet this is the supply current in standby mode in mA
    Ir = 11.5  # according to the datasheet this is the supply current in receive mode, LnaBoost ON,band 1 in mA
    Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
@@ -760,31 +761,42 @@ elif (sim_scenario == 1):
    sent = sum(n.sent for n in nodes)
    ack_received = sum(n.ack_received for n in nodes)
    energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
-   energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
+   energy_idle1 = sum(idletime1 * Iidle * V * node.ack_received for node in nodes)
+   energy_idle2 = sum(idletime2 * Iidle * V * node.nack_received for node in nodes)
    energy_Rx1DL = sum(Tr* Ir * V * node.ack_received for node in nodes)
    energy_stb = sum(Tpream * Nstb * Istb * V * node.nack_received for node in nodes)
-   energy_sleep = sum((avgSendTime - node.packet.rectime - idletime - Tr) * Isleep * V * node.sent for node in nodes)
+   energy_sleep1 = sum((avgSendTime - node.packet.rectime - idletime1 - Tr) * Isleep * V * node.ack_received for node in nodes)
+   energy_sleep2 = sum((avgSendTime - node.packet.rectime - idletime2 - Nstb * Tpream) * Isleep * V * node.nack_received for node in nodes)
    energy1 = energy_TxUL / 1e6
-   energy2 = (energy_TxUL + energy_idle + energy_Rx1DL + energy_sleep) / 1e6
-
+   energy2 = (energy_idle1 + energy_Rx1DL + energy_sleep1 ) / 1e6
+   energy3 = (energy_idle2 + energy_sleep2 + energy_stb) / 1e6
+   energyT = energy1 + energy2 + energy3
 elif (sim_scenario == 2):
-   Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
-   idletime = 1000  # time in idle mode in ms
-   Ir = 11.5  # according to the datasheet this is the supply current in receive mode, LnaBoost ON,band 1 in mA
-   Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
-   Tr = airtime(12, 4, 13, 125)
-   sent = sum(n.sent for n in nodes)
-   ack_received = sum(n.ack_received for n in nodes)
-   energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
-   energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
-   energy_Rx1DL = sum(Tr * Ir * V * node.ack_received for node in nodes)
-   energy_sleep = sum((avgSendTime - node.packet.rectime - idletime - Tr) * Isleep * V * node.sent for node in nodes)
-   energy1 = energy_TxUL / 1e6
-   energy2 = (energy_TxUL + energy_idle + energy_Rx1DL + energy_sleep) / 1e6
-
+    Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
+    idletime = 2000  # time in idle mode in ms
+    Istb = 1.6  # according to the datasheet this is the supply current in standby mode in mA
+    Ir = 11.5  # according to the datasheet this is the supply current in receive mode, LnaBoost ON,band 1 in mA
+    Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
+    Nstb1 = 1  # number of stanby mode, nodes go two time in standby mode
+    Nstb2 = 2  # number of stanby mode, nodes go two time in standby mode
+    Tr = airtime(12, 4, 13, 125)
+    sent = sum(n.sent for n in nodes)
+    ack_received = sum(n.ack_received for n in nodes)
+    energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
+    energy_idle1 = sum(idletime * Iidle * V *node.ack_received for node in nodes )
+    energy_idle2 = sum(idletime * Iidle * V * node.nack_received for node in nodes)
+    energy_Rx2DL = sum(Tr * Ir * V * node.ack_received for node in nodes)
+    energy_stb1 = sum(Tpream * Nstb1 * Istb * V * node.ack_received for node in nodes)
+    energy_stb2 = sum(Tpream * Nstb2 * Istb * V * node.nack_received for node in nodes)
+    energy_sleep1 = sum((avgSendTime - node.packet.rectime - Nstb1 * Tpream - idletime - Tr) * Isleep * V * node.ack_received for node in nodes )
+    energy_sleep2 = sum((avgSendTime - node.packet.rectime - idletime - Nstb2 * Tpream) * Isleep * V * node.nack_received for node in nodes)
+    energy1 = energy_TxUL / 1e6
+    energy2 = (energy_idle1 + energy_Rx2DL + energy_sleep1 + energy_stb1) / 1e6
+    energy3 = (energy_idle2 + energy_sleep2 + energy_stb2) / 1e6
+    energyT = energy1 + energy2 + energy3
 if (verbose>=0):
     print ("energy (in J) in tx only: ", energy1)
-    print (" total energy (in J): ", energy2)
+    print (" total energy (in J): ", energyT)
     print ("sent packets: ", sent)
     print ("collisions: ", nrCollisions)
     print ("received packets: ", nrReceived)
@@ -812,14 +824,14 @@ if (verbose >= 1):
 if os.path.isfile(fname):
     res1 = "\n" + str(simtime) + " " + str(avgSendTime) + " " + str(nrNodes) + " " + str(nrCollisions) + " " + str(
         nrReceived) + " " + str(nrProcessed) + " " + str(nrLost) + " " + str(sent) + " " + str(energy1) + " " + str(
-        energy2) + " " + str(der1) + " " + str(der2)
+        energyT) + " " + str(der1) + " " + str(der2)
     # res2 = "\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
 
 else:
-    res1 = "#simtime avgSendTime nrNodes nrCollisions nrReceived nrProcessed nrLost nrTransmissions OverallEnergy1 OverallEnergy2 der1 der2 \n" + str(
+    res1 = "#simtime avgSendTime nrNodes nrCollisions nrReceived nrProcessed nrLost nrTransmissions OverallEnergy1 OverallEnergyT der1 der2 \n" + str(
         simtime) + " " + str(avgSendTime) + " " + str(nrNodes) + " " + str(nrCollisions) + " " + str(
         nrReceived) + " " + str(nrProcessed) + " " + str(nrLost) + " " + str(sent) + " " + str(energy1) + " " + str(
-        energy2) + " " + str(der1) + " " + str(der2)
+        energyT) + " " + str(der1) + " " + str(der2)
     # res2 = "#simtime avgSendTime nrNodes nrCollisions nrReceived nrProcessed nrLost nrTransmissions OverallEnergy\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
 with open(fname, "a") as myfile:
     myfile.write(res1)
