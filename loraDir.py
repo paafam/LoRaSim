@@ -62,14 +62,15 @@
 
 """
 
-import simpy
-
-import random
-import numpy as np
 import math
-import sys
-import matplotlib.pyplot as plt
 import os
+import random
+import sys
+
+import matplotlib.pyplot as plt
+import numpy as np
+import simpy
+from datetime import datetime
 
 # Verbose:
 # 0 : SILENT mode
@@ -77,8 +78,36 @@ import os
 # 2 : ERROR mode : only error messages are printed
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
-verbose = 1
+verbose = 0
 Tpream = 0
+
+# Get runtime
+now = datetime.now()
+
+# detect the current working directory
+path = os.getcwd()
+if verbose >=1:
+    print ("[INFO] - current working directory is %s " % path)
+
+
+data_path   = path + "/data"
+# Create results directory
+results_path = path + "/results"
+try:
+    os.mkdir(results_path)
+except OSError:
+    if verbose >=2:
+        print ("[ERROR] - Creation of the directory %s failed" % results_path)
+    if os.path.isdir(results_path):
+        if verbose >= 2:
+            print('[ERROR] - Directory already exist')
+else:
+    if verbose >= 1:
+        print ("[INFO] - Successfully created the directory %s " % results_path)
+
+# Create sim directory in results directory
+dt_string = now.strftime("%Y%m%d-%H%M%S")
+sim_results_path = results_path + "/sim_"+dt_string
 
 
 # Simulation scenario
@@ -633,16 +662,32 @@ if len(sys.argv) >= 5:
     experiment = int(sys.argv[3])
     simtime = int(sys.argv[4])
 
-    if len(sys.argv) == 6:
+    if len(sys.argv) >= 6:
         sim_scenario = int(sys.argv[5])
+
+    # Create sim results directory
+    if len(sys.argv) >= 7:
+        # Directory is already created
+        sim_results_path = results_path + '/' + str(sys.argv[6])
+    else:
+        # We need to create the directory
+        try:
+            os.mkdir(sim_results_path)
+        except OSError:
+            print("[ERROR] - Creation of the directory %s failed" % sim_results_path)
+            if os.path.isdir(sim_results_path):
+                print('[ERROR] - Directory already exist')
+        else:
+            print("[INFO] - Successfully created the directory %s " % sim_results_path)
+
 
     # instant de transmission et durée d'un slot pour le Aloha sloté
     if (mac_protocol == 1):
         slot_time = 100
         txInstantVector = np.arange(0, simtime, slot_time)
 
-    if len(sys.argv) > 6:
-        full_collision = bool(int(sys.argv[5]))
+    if len(sys.argv) > 7:
+        full_collision = bool(int(sys.argv[7]))
 
     if (verbose >= 1):
         print("[INFO] - Nodes:", nrNodes)
@@ -650,7 +695,9 @@ if len(sys.argv) >= 5:
         print("[INFO] - Experiment: ", experiment)
         print("[INFO] - Simtime: ", simtime)
         print("[INFO] - Sim_scenario: ", sim_scenario)
+        print("[INFO] - Sim_result_path: ", sim_results_path)
         print("[INFO] - Full Collision: ", full_collision)
+
 else:
     print("usage: ./loraDir <nodes> <avgsend> <experi"
           "ment> <simtime> <sim_scenario> [collision]")
@@ -712,8 +759,8 @@ if (graphics == 1):
 
 # load node location from "nodes.txt" file if present and selected
 if loadNodesLocation:
-    if os.path.isfile('nodes.txt'):
-        nodesPosition = np.loadtxt('nodes.txt')
+    if os.path.isfile('data/nodes.txt'):
+        nodesPosition = np.loadtxt('data/nodes.txt')
         nrNodes = nodesPosition.shape[0]
         print(str(nodesPosition[1][1]) + "\n")
 
@@ -830,7 +877,12 @@ if (graphics == 1):
 
 # save experiment data into a dat file that can be read by e.g. gnuplot
 # name of file would be:  exp0.dat for experiment 0
-fname = "sim_results_exp" + str(experiment) + ".dat"
+
+
+
+
+fname = sim_results_path +"/sim_results_exp" + str(experiment) + "_mac" + str(mac_protocol) + "_scenario"+ str(sim_scenario) + ".dat"
+
 if (verbose >= 1):
     print(fname)
 if os.path.isfile(fname):
