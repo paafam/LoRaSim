@@ -4,3 +4,4 @@
 figures/
 *.txt
 .venv1/
+results/*
