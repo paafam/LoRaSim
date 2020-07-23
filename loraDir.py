@@ -79,7 +79,7 @@ Tpream = 0
 # 0 : all frame are unconfirmed frame
 # 1 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the first RX1 window
 # 2 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the second RX2 window
-sim_scenario = 2
+sim_scenario = 1
 
 # MAC protocol selection
 # 0 : Pure Aloha
@@ -256,6 +256,7 @@ def timingCollision(p1, p2):
 # according to LoraDesignGuide_STD.pdf
 #
 def airtime(sf, cr, pl, bw):
+    global Tpream
     H = 0  # implicit header disabled (H=0) or not (H=1)
     DE = 0  # low data rate optimization enabled (=1) or not (=0)
     Npream = 8  # number of preamble symbol (12.25  from Utz paper)
@@ -748,7 +749,7 @@ if (sim_scenario == 0):
  energy_stb = sum(Tpream * Nstb *Istb * V * node.sent for node in nodes)
  energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*Tpream)*Isleep*V * node.sent for node in nodes)
  energy1 = energy_TxUL/1e6
- energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
+ energyT = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
 elif (sim_scenario == 1):
    Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
    idletime1 = 1000  # time in idle mode in ms
@@ -802,6 +803,7 @@ if (verbose>=0):
     print ("received packets: ", nrReceived)
     print ("processed packets: ", nrProcessed)
     print ("lost packets: ", nrLost)
+    print ("Tpream: ", Tpream)
 
 
 # data extraction rate
