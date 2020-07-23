@@ -40,6 +40,12 @@
         5   similair to experiment 3, but also optimises the transmit power.
     simtime
         total running time in milliseconds
+    sim_scenario
+        sim_scenario determines the scenario used for simulation purposes. 
+        Default value is 0
+        0   all frames are unconfirmed frame
+        1   all frames are confirmed frame, a 13 bytes ACK frame is sent on the first RX1 window
+        2   all frames are confirmed frame, a 13 bytes ACK frame is sent on the second RX2 window
     collision
         set to 1 to enable the full collision check, 0 to use a simplified check.
         With the simplified check, two messages collide when they arrive at the
@@ -52,7 +58,7 @@
     data file can be easily plotted using e.g. gnuplot.
     
  EXAMPLE
-    > python loraDir.py 100 1000000 1 5011200000
+    > python loraDir.py 100 1000000 1 0 5011200000
 
 """
 
@@ -71,7 +77,7 @@ import os
 # 2 : ERROR mode : only error messages are printed
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
-verbose = 0
+verbose = 1
 Tpream = 0
 
 
@@ -79,7 +85,7 @@ Tpream = 0
 # 0 : all frame are unconfirmed frame
 # 1 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the first RX1 window
 # 2 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the second RX2 window
-sim_scenario = 1
+sim_scenario = 0    # This is the default value
 
 # MAC protocol selection
 # 0 : Pure Aloha
@@ -125,20 +131,20 @@ def checkcollision(packet):
         if packetsAtBS[i].packet.processed == 1:
             processing = processing + 1
     if (processing > maxBSReceives):
-        if (verbose >= 1):
-            print("INFO: too long:", len(packetsAtBS))
+        if (verbose >= 3):
+            print("[DEBUG] -  too long:", len(packetsAtBS))
         packet.processed = 0
     else:
         packet.processed = 1
 
     if packetsAtBS:
-        if (verbose >= 1):
-            print("INFO: CHECK node {} (sf:{} bw:{} freq:{:.6e}) others: {}".format(packet.nodeid, packet.sf, packet.bw,
+        if (verbose >= 3):
+            print("[DEBUG] - CHECK node {} (sf:{} bw:{} freq:{:.6e}) others: {}".format(packet.nodeid, packet.sf, packet.bw,
                                                                                     packet.freq, len(packetsAtBS)))
         for other in packetsAtBS:
             if other.nodeid != packet.nodeid:
-                if (verbose >= 1):
-                    print("INFO: >> node {} (sf:{} bw:{} freq:{:.6e})".format(other.nodeid, other.packet.sf,
+                if (verbose >= 3):
+                    print("[DEBUG] - >> node {} (sf:{} bw:{} freq:{:.6e})".format(other.nodeid, other.packet.sf,
                                                                               other.packet.bw, other.packet.freq))
                 # simple collision
                 if frequencyCollision(packet, other.packet) and sfCollision(packet, other.packet):
@@ -171,54 +177,54 @@ def checkcollision(packet):
 #        |f1-f2| <= 30 kHz if f1 or f2 has bw 125
 def frequencyCollision(p1, p2):
     if (abs(p1.freq - p2.freq) <= 120 and (p1.bw == 500 or p2.freq == 500)):
-        if (verbose >= 1):
-            print("INFO: frequency coll 500")
+        if (verbose >= 3):
+            print("[DEBUG] -  frequency coll 500")
         return True
     elif (abs(p1.freq - p2.freq) <= 60 and (p1.bw == 250 or p2.freq == 250)):
-        if (verbose >= 1):
-            print("INFO: frequency coll 250")
+        if (verbose >= 3):
+            print("[DEBUG] -  frequency coll 250")
         return True
     else:
         if (abs(p1.freq - p2.freq) <= 30):
-            if (verbose >= 1):
-                print("INFO: frequency coll 125")
+            if (verbose >= 3):
+                print("[DEBUG] -  frequency coll 125")
             return True
             # else:
-            if (verbose >= 1):
-                print("INFO: no frequency coll")
+            if (verbose >= 3):
+                print("[DEBUG] -  no frequency coll")
     return False
 
 
 def sfCollision(p1, p2):
     if p1.sf == p2.sf:
-        if (verbose >= 1):
-            print("INFO: collision sf node {} and node {}".format(p1.nodeid, p2.nodeid))
+        if (verbose >= 3):
+            print("[DEBUG] -  collision sf node {} and node {}".format(p1.nodeid, p2.nodeid))
         # p2 may have been lost too, will be marked by other checks
         return True
-    if (verbose >= 1):
-        print("INFO: no sf collision")
+    if (verbose >= 3):
+        print("[DEBUG] -  no sf collision")
     return False
 
 
 def powerCollision(p1, p2):
     powerThreshold = 6  # dB
-    if (verbose >= 1):
+    if (verbose >= 3):
         print(
-            "INFO: pwr: node {0.nodeid} {0.rssi:3.2f} dBm node {1.nodeid} {1.rssi:3.2f} dBm; diff {2:3.2f} dBm".format(
+            "[DEBUG] -  pwr: node {0.nodeid} {0.rssi:3.2f} dBm node {1.nodeid} {1.rssi:3.2f} dBm; diff {2:3.2f} dBm".format(
                 p1, p2, round(p1.rssi - p2.rssi, 2)))
     if abs(p1.rssi - p2.rssi) < powerThreshold:
-        if (verbose >= 1):
-            print("INFO: collision pwr both node {} and node {}".format(p1.nodeid, p2.nodeid))
+        if (verbose >= 3):
+            print("[DEBUG] -  collision pwr both node {} and node {}".format(p1.nodeid, p2.nodeid))
         # packets are too close to each other, both collide
         # return both packets as casualties
         return (p1, p2)
     elif p1.rssi - p2.rssi < powerThreshold:
         # p2 overpowered p1, return p1 as casualty
-        if (verbose >= 1):
-            print("INFO: collision pwr node {} overpowered node {}".format(p2.nodeid, p1.nodeid))
+        if verbose >= 3:
+            print("[DEBUG] -  collision pwr node {} overpowered node {}".format(p2.nodeid, p1.nodeid))
         return (p1,)
-    if (verbose >= 1):
-        print("INFO: p1 wins, p2 lost")
+    if verbose >= 3:
+        print("[DEBUG] -  p1 wins, p2 lost")
     # p2 was the weaker packet, return it as a casualty
     return (p2,)
 
@@ -237,18 +243,18 @@ def timingCollision(p1, p2):
     # check whether p2 ends in p1's critical section
     p2_end = p2.addTime + p2.rectime
     p1_cs = env.now + Tpreamb
-    if (verbose >= 1):
-        print("INFO: collision timing node {} ({},{},{}) node {} ({},{})".format(p1.nodeid, env.now - env.now,
+    if (verbose >= 3):
+        print("[DEBUG] -  collision timing node {} ({},{},{}) node {} ({},{})".format(p1.nodeid, env.now - env.now,
                                                                                  p1_cs - env.now, p1.rectime, p2.nodeid,
                                                                                  p2.addTime - env.now,
                                                                                  p2_end - env.now))
     if p1_cs < p2_end:
         # p1 collided with p2 and lost
-        if (verbose >= 1):
-            print("INFO: not late enough")
+        if (verbose >= 3):
+            print("[DEBUG] -  not late enough")
         return True
-    if (verbose >= 1):
-        print("INFO: saved by the preamble")
+    if (verbose >= 3):
+        print("[DEBUG] -  saved by the preamble")
     return False
 
 
@@ -270,8 +276,8 @@ def airtime(sf, cr, pl, bw):
 
     Tsym = (2.0 ** sf) / bw
     Tpream = (Npream + 4.25) * Tsym
-    if (verbose >= 1):
-        print("INFO: sf", sf, " cr", cr, "pl", pl, "bw", bw)
+    if (verbose >= 3):
+        print("[DEBUG] -  sf", sf, " cr", cr, "pl", pl, "bw", bw)
     payloadSymbNB = 8 + max(math.ceil((8.0 * pl - 4.0 * sf + 28 + 16 - 20 * H) / (4.0 * (sf - 2 * DE))) * (cr + 4), 0)
     Tpayload = payloadSymbNB * Tsym
 
@@ -322,15 +328,15 @@ class myNode():
                                     print("INFO: could not place new node, giving up")
                                 exit(-1)
                 else:
-                    if (verbose >= 1):
-                        print("INFO: first node")
+                    if (verbose >= 3):
+                        print("[DEBUG] -  first node")
                     self.x = posx
                     self.y = posy
                     found = 1
 
         self.dist = np.sqrt((self.x - bsx) * (self.x - bsx) + (self.y - bsy) * (self.y - bsy))
-        if (verbose >= 1):
-            print(('INFO: node %d' % nodeid, "x", self.x, "y", self.y, "dist: ", self.dist))
+        if (verbose >= 3):
+            print('[DEBUG] -  node %d' % nodeid, "x", self.x, "y", self.y, "dist: ", self.dist)
         if sim_scenario == 0:
             self.packet = myPacket(self.nodeid, packetlen, self.dist,'unconfirmed')
         elif sim_scenario == 1:
@@ -405,8 +411,8 @@ class myPacket():
 
         # log-shadow
         Lpl = Lpld0 + 10 * gamma * math.log10(distance / d0)
-        if (verbose >= 1):
-            print("INFO: Lpl:", Lpl)
+        if (verbose >= 3):
+            print("[DEBUG] -  Lpl:", Lpl)
         Prx = self.txpow - GL - Lpl
 
         if (experiment == 3) or (experiment == 5):
@@ -414,8 +420,8 @@ class myPacket():
             minsf = 0
             minbw = 0
 
-            if (verbose >= 1):
-                print("INFO: Prx:", Prx)
+            if (verbose >= 3):
+                print("[DEBUG] -  Prx:", Prx)
 
             for i in range(0, 6):
                 for j in range(1, 4):
@@ -434,11 +440,11 @@ class myPacket():
                             minbw = self.bw
                             minsensi = sensi[i, j]
             if (minairtime == 9999):
-                if (verbose >= 1):
-                    print("INFO: does not reach base station")
+                if (verbose >= 3):
+                    print("[DEBUG] -  does not reach base station")
                 exit(-1)
-            if (verbose >= 1):
-                print("INFO: best sf:", minsf, " best bw: ", minbw, "best airtime:", minairtime)
+            if (verbose >= 3):
+                print("[DEBUG] -  best sf:", minsf, " best bw: ", minbw, "best airtime:", minairtime)
             self.rectime = minairtime
             self.sf = minsf
             self.bw = minbw
@@ -448,8 +454,8 @@ class myPacket():
                 # reduce the txpower if there's room left
                 self.txpow = max(2, self.txpow - math.floor(Prx - minsensi))
                 Prx = self.txpow - GL - Lpl
-                if (verbose >= 1):
-                    print('INFO: minsesi {} best txpow {}'.format(minsensi, self.txpow))
+                if (verbose >= 3):
+                    print('[DEBUG] -  minsesi {} best txpow {}'.format(minsensi, self.txpow))
 
         # transmission range, needs update XXX
         self.transRange = 150
@@ -467,12 +473,12 @@ class myPacket():
         else:
             self.freq = 860000000
 
-        if (verbose >= 1):
-            print("INFO: frequency", self.freq, "symTime ", self.symTime)
-            print("INFO: bw", self.bw, "sf", self.sf, "cr", self.cr, "rssi", self.rssi)
+        if (verbose >= 3):
+            print("[DEBUG] -  frequency", self.freq, "symTime ", self.symTime)
+            print("[DEBUG] -  bw", self.bw, "sf", self.sf, "cr", self.cr, "rssi", self.rssi)
         self.rectime = airtime(self.sf, self.cr, self.pl, self.bw)
-        if (verbose >= 1):
-            print("INFO: rectime node ", self.nodeid, "  ", self.rectime)
+        if (verbose >= 3):
+            print("[DEBUG] -  rectime node ", self.nodeid, "  ", self.rectime)
         # denote if packet is collided
         self.collided = 0
         self.processed = 0
@@ -627,23 +633,27 @@ if len(sys.argv) >= 5:
     experiment = int(sys.argv[3])
     simtime = int(sys.argv[4])
 
+    if len(sys.argv) == 6:
+        sim_scenario = int(sys.argv[5])
+
     # instant de transmission et durée d'un slot pour le Aloha sloté
     if (mac_protocol == 1):
         slot_time = 100
         txInstantVector = np.arange(0, simtime, slot_time)
 
-    if len(sys.argv) > 5:
+    if len(sys.argv) > 6:
         full_collision = bool(int(sys.argv[5]))
 
     if (verbose >= 1):
-        print("Nodes:", nrNodes)
-        print("AvgSendTime (exp. distributed):", avgSendTime)
-        print("Experiment: ", experiment)
-        print("Simtime: ", simtime)
-        print("Full Collision: ", full_collision)
+        print("[INFO] - Nodes:", nrNodes)
+        print("[INFO] - AvgSendTime (exp. distributed):", avgSendTime)
+        print("[INFO] - Experiment: ", experiment)
+        print("[INFO] - Simtime: ", simtime)
+        print("[INFO] - Sim_scenario: ", sim_scenario)
+        print("[INFO] - Full Collision: ", full_collision)
 else:
     print("usage: ./loraDir <nodes> <avgsend> <experi"
-          "ment> <simtime> [collision]")
+          "ment> <simtime> <sim_scenario> [collision]")
     print("experiment 0 and 1 use 1 frequency only")
     exit(-1)
 
@@ -680,10 +690,10 @@ elif experiment in [3, 5]:
     minsensi = np.amin(sensi)  ## Experiment 3 can use any setting, so take minimum
 Lpl = Ptx - minsensi
 if (verbose >= 1):
-    print("amin", minsensi, "Lpl", Lpl)
+    print("[INFO] - amin", minsensi, "Lpl", Lpl)
 maxDist = d0 * (math.e ** ((Lpl - Lpld0) / (10.0 * gamma)))
 if (verbose >= 1):
-    print("maxDist:", maxDist)
+    print("[INFO] - maxDist:", maxDist)
 
 # base station placement
 bsx = maxDist + 10
@@ -726,7 +736,7 @@ env.run(until=simtime)
 
 # print stats and save into file
 if (verbose >= 1):
-    print("nrCollisions ", nrCollisions)
+    print("[INFO] - nrCollisions ", nrCollisions)
 
 # compute energy
 # Transmit consumption in mA from -2 to +17 dBm
@@ -795,24 +805,24 @@ elif (sim_scenario == 2):
     energy2 = (energy_idle1 + energy_Rx2DL + energy_sleep1 + energy_stb1) / 1e6
     energy3 = (energy_idle2 + energy_sleep2 + energy_stb2) / 1e6
     energyT = energy1 + energy2 + energy3
-if (verbose>=0):
-    print ("energy (in J) in tx only: ", energy1)
-    print (" total energy (in J): ", energyT)
-    print ("sent packets: ", sent)
-    print ("collisions: ", nrCollisions)
-    print ("received packets: ", nrReceived)
-    print ("processed packets: ", nrProcessed)
-    print ("lost packets: ", nrLost)
-    print ("Tpream: ", Tpream)
+if (verbose>=1):
+    print ("[INFO] - energy (in J) in tx only: ", energy1)
+    print ("[INFO] -  total energy (in J): ", energyT)
+    print ("[INFO] - sent packets: ", sent)
+    print ("[INFO] - collisions: ", nrCollisions)
+    print ("[INFO] - received packets: ", nrReceived)
+    print ("[INFO] - processed packets: ", nrProcessed)
+    print ("[INFO] - lost packets: ", nrLost)
+    print ("[INFO] - Tpream: ", Tpream)
 
 
 # data extraction rate
 der1 = (sent - nrCollisions) / float(sent)
 if (verbose >= 1):
-    print("DER method 1:", der1)
+    print("[INFO] - DER method 1:", der1)
 der2 = (nrReceived) / float(sent)
 if (verbose >= 1):
-    print("DER method 2:", der2)
+    print("[INFO] - DER method 2:", der2)
 
 # this can be done to keep graphics visible
 if (graphics == 1):
