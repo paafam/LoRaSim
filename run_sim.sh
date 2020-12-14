@@ -27,10 +27,10 @@ echo "Sim ID : $now"
 nodes=(`seq 100 100 1600`)		  #number of nodes to simulate
 avgsend=1000000						      #average sending interval in ms
 experiment=1 						        #simulation radio settings 0 --> SF12 - BW125 - CR4/8
-simdays=58
+simdays=1
 simtime=$((simdays*24*60*60*1000))	#total running time in ms
 scenario=(`seq 0 2`)
-Nr=100                             # Number of realization
+Nr=1                             # Number of realization
 progress=0
 echo ===========================================================
 for s in ${scenario[@]}
