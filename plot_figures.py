@@ -65,6 +65,8 @@ else:
 
 # results filename to load
 i = 2
+linestyle= ['b-x', 'g--+', 'k--*']
+linelegend= ['Confirmed Frame on RX2','Confirmed Frame on RX1', 'Unconfirmed Frame']
 for f in files:
     result_filepath = sim_results_path + "/" + f
     names = f.split(".")
@@ -74,16 +76,16 @@ for f in files:
     # Read data from sim_results_file
     simtime, avgSendTime, nrNodes, nrCollisions, nrReceived, nrProcessed, nrLost, nrTransmissions, OverallEnergy1, OverallEnergyT, der1, der2 = np.loadtxt(result_filepath, unpack=True)
     # plot raw data
-    plt.figure(i)
-    plt.grid(True)
-    plt.plot(nrNodes, OverallEnergy1/1e3, 'r--+', nrNodes, OverallEnergyT/1e3, 'b-x')
-    plt.legend(['Tx only energy','Node global energy'])
-    plt.xlabel('Number of nodes')
-    plt.ylabel('Network Energy Consumption [kJ]')
-    plt.title(names[4] + ' - Raw Data')
-    plt.savefig(figures_path + "/" + names[4] + "_OverallEnergy_consumption_raw.png")
-    # plt.show()
-    i=i+1
+    #plt.figure(i)
+    #plt.grid(True)
+    #plt.plot(nrNodes, OverallEnergy1/1e3, 'r--+', nrNodes, OverallEnergyT/1e3, linestyle[(i-2)%3])
+    #plt.legend(['Tx only energy','Node global energy'])
+    #plt.xlabel('Number of nodes')
+    #plt.ylabel('Network Energy Consumption [kJ]')
+    #plt.title(names[4] + ' - Raw Data')
+    #plt.savefig(figures_path + "/" + names[4] + "_OverallEnergy_consumption_raw.png")
+    #plt.show()
+    #i=i+1
     # plot mean data
     nodes = np.unique(nrNodes)
     m_energy1 = np.mean(np.reshape(OverallEnergy1/1e3, [nodes.size,nrRealization]),1)
@@ -93,29 +95,33 @@ for f in files:
 
     plt.figure(1)
     plt.grid(True)
-    plt.plot(nodes, m_energy1, 'r--+', nodes, m_energyT, 'b-x')
-    plt.legend(['Tx only energy', 'Node global energy'])
-    plt.xlabel('Number of nodes')
+    if (i==2):
+        plt.plot(nodes, m_energy1, 'r--+', nodes, m_energyT, linestyle[(i-2)%3])
+    else:
+        plt.plot(nodes, m_energyT, linestyle[(i - 2) % 3])
+
+    plt.legend(['Tx only energy', linelegend[0],linelegend[1],linelegend[2]])
+    plt.xlabel('Number of end-devices')
     plt.ylabel('Network Energy Consumption [kJ]')
-    plt.title(names[4] + ' - NEC')
+    #plt.title(names[4] + ' - NEC')
     plt.savefig(figures_path + "/_OverallEnergy_consumption_mean.png")
 
     plt.figure(i)
     plt.grid(True)
-    plt.plot(nodes, m_energy1, 'r--+', nodes, m_energyT, 'b-x')
-    plt.legend(['Tx only energy', 'Node global energy'])
-    plt.xlabel('Number of nodes')
+    plt.plot(nodes, m_energy1, 'r--+', nodes, m_energyT, linestyle[(i-2)%3])
+    plt.legend(['Tx only energy', linelegend[(i-2)%3]])
+    plt.xlabel('Number of end-devices')
     plt.ylabel('Network Energy Consumption [kJ]')
-    plt.title(names[4] + ' - NEC')
+    #plt.title(names[4] + ' - NEC')
     plt.savefig(figures_path + "/" + names[4] + "_OverallEnergy_consumption_mean.png")
     #plt.show()
     i = i + 1
 
-    plt.figure(i)
-    plt.plot(nodes, m_der1, 'r--', nodes, m_der2, 'b*')
-    plt.xlabel('Nodes')
-    plt.ylabel('Data Extraction Rate')
-    plt.title('DER - Mean Data')
-    plt.savefig(figures_path + "/" + names[4] + "_data_extraction_rate_mean.png")
+    #plt.figure(i)
+    #plt.plot(nodes, m_der1, 'r--', nodes, m_der2, 'b*')
+    #plt.xlabel('Nodes')
+    #plt.ylabel('Data Extraction Rate')
+    #plt.title('DER - Mean Data')
+    #plt.savefig(figures_path + "/" + names[4] + "_data_extraction_rate_mean.png")
     #plt.show()
-    i = i + 1
+    #i = i + 1
