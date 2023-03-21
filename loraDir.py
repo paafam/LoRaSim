@@ -61,7 +61,7 @@
     > python loraDir.py 100 1000000 1 0 5011200000
 
 """
-
+#import lora1
 import math
 import os
 import random
@@ -78,7 +78,7 @@ from datetime import datetime
 # 2 : ERROR mode : only error messages are printed
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
-verbose = 0
+verbose = 3
 Tpream = 0
 
 # Get runtime
@@ -233,6 +233,9 @@ def sfCollision(p1, p2):
     if (verbose >= 3):
         print("[DEBUG] -  no sf collision")
     return False
+
+
+
 
 
 def powerCollision(p1, p2):
@@ -572,6 +575,30 @@ def transmit(env, node):
         # packet arrives -> add to base station
 
         node.sent = node.sent + 1
+
+        # Attendre avant d'envoyer le prochain paquet
+        yield env.timeout(random.expovariate(1.0 / float(node.period)))
+
+    # Fonction de récompense pour chaque nœud
+def reward(node, packet):
+        if packet is not None:
+            # Si le paquet a été reçu correctement, donner une récompense positive
+            node.reinforce(1)
+        else:
+            # Si le paquet n'a pas été reçu correctement, donner une récompense négative
+            node.reinforce(-1)
+
+        # Mettre en place les fonctions de transmission et de récompense pour chaque nœud
+
+        for node in nodes:
+            env.process(transmit(node, packet))
+            node.on_receive(reward)
+            # Exécuter la simulation
+            env.run(until=1000)
+        # Afficher le resutat
+        for node in nodes:
+            print(f'Node {node.nodeid} sent {node.packet_count} packets, with {node.collision_count} collisions')
+
         if verbose >= 3:
             print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_done, packet is sent')
 
@@ -649,6 +676,149 @@ def transmit(env, node):
         node.packet.lost = False
 
 
+#code in sert
+
+import gym
+import numpy as np
+import matplotlib.pyplot as plt
+import numpy as np
+
+# Définir les états et actions possibles
+STATES = [0, 1, 2, 3] # États possibles : 0 = idle, 1 = tx_busy, 2 = rx_busy, 3 = collision
+ACTIONS = [0, 1] # Actions possibles : 0 = pas de transmission, 1 = transmission
+
+# Initialisation de la matrice Q avec des valeurs aléatoires
+Q = np.random.rand(len(STATES), len(ACTIONS))
+
+# Définition des paramètres d'apprentissage
+LEARNING_RATE = 0.8
+DISCOUNT_FACTOR = 0.95
+NUM_EPISODES = 1000
+
+
+class LoRAEnv(gym.Env):
+    def __init__(self):
+        self.action_space = gym.spaces.Discrete(2) # 2 actions possibles : 0 = pas de transmission, 1 = transmission
+        self.observation_space = gym.spaces.Discrete(4) # 4 états possibles : 0 = idle, 1 = tx_busy, 2 = rx_busy, 3 = collision
+        self.Q = np.random.rand(4, 2) # Initialisation de la matrice Q avec des valeurs aléatoires
+        self.LEARNING_RATE = 0.8 # Définition des paramètres d'apprentissage
+        self.DISCOUNT_FACTOR = 0.95
+        self.NUM_EPISODES = 1000
+        self.rewards = []
+
+    def step(self, action):
+        if action == 0:
+            # Pas de transmission
+            if self.state == 1:
+                new_state = 0
+                reward = -10 # Collision
+            elif self.state == 2:
+                new_state = 0
+                reward = 1 # Pas de collision
+            else:
+                new_state = self.state
+                reward = 0
+        else:
+            # Transmission
+            if self.state == 0:
+                new_state = 1
+                reward = 1 # Pas de collision
+            elif self.state == 1:
+                new_state = 1
+                reward = -1 # Transmission en cours
+            elif self.state == 2:
+                new_state = 3
+                reward = -10 # Collision
+            else:
+                new_state = 3
+                reward = -10 # Collision
+        # Mettre à jour la matrice Q avec la formule de Q-Learning
+        self.Q[self.state, action] = self.Q[self.state, action] + self.LEARNING_RATE * (reward + self.DISCOUNT_FACTOR * np.max(self.Q[new_state]) - self.Q[self.state, action])
+        self.episode_reward += reward
+        self.state = new_state
+        done = False
+        if self.episode_reward <= -50:
+            done = True
+        return self.state, reward, done, {}
+
+    def reset(self):
+        self.state = 0 # Début de l'épisode : état initial est idle
+        self.epsilon = 0.5 # Epsilon initial pour la politique epsilon-greedy
+        self.episode_reward = 0 # Initialisation de la récompense de l'épisode
+        return self.state
+
+    def run_episodes(self):
+        for episode in range(self.NUM_EPISODES):
+            self.reset()
+            for t in range(100):
+                action = self.choose_action()
+                _, reward, done, _ = self.step(action)
+                if done:
+                    break
+            self.rewards.append(self.episode_reward)
+            # Diminution de l'epsilon avec le temps pour privilégier l'exploitation
+            self.epsilon /= (episode + 1)
+
+# Définition de la fonction pour choisir l'action en fonction de l'état actuel (epsilon-greedy)
+def choose_action(state, epsilon):
+    if np.random.uniform(0, 1) < epsilon:
+        # Exploration : choisir une action aléatoire
+        action = np.random.choice(ACTIONS)
+    else:
+        # Exploitation : choisir l'action ayant la plus grande valeur Q
+        action = np.argmax(Q[state])
+    return action
+
+# Boucle d'apprentissage
+rewards = []
+for episode in range(NUM_EPISODES):
+    state = 0 # Début de l'épisode : état initial est idle
+    epsilon = 0.5 / (episode + 1) # Diminution de l'epsilon avec le temps pour privilégier l'exploitation
+    episode_reward = 0 # Initialisation de la récompense de l'épisode
+    for t in range(100):
+        action = choose_action(state, epsilon)
+        # Appliquer l'action et observer le nouvel état et la récompense
+        if action == 0:
+            # Pas de transmission
+            if state == 1:
+                new_state = 0
+                reward = -10 # Collision
+            elif state == 2:
+                new_state = 0
+                reward = 1 # Pas de collision
+            else:
+                new_state = state
+                reward = 0
+        else:
+            # Transmission
+            if state == 0:
+                new_state = 1
+                reward = 1 # Pas de collision
+            elif state == 1:
+                new_state = 1
+                reward = -1 # Transmission en cours
+            elif state == 2:
+                new_state = 3
+                reward = -10 # Collision
+            else:
+                new_state = 3
+                reward = -10 # Collision
+        # Mettre à jour la matrice Q avec la formule de Q-Learning
+        Q[state, action] = Q[state, action] + LEARNING_RATE * (reward + DISCOUNT_FACTOR * np.max(Q[new_state]) - Q[state, action])
+        episode_reward += reward
+        state = new_state
+    rewards.append(episode_reward)
+
+# Afficher la matrice Q
+print(Q)
+
+# Afficher les récompenses moyennes par épisode
+print("Récompense moyenne par épisode : " + str(sum(rewards)/NUM_EPISODES))
+print("Somme des épisodes pour les recompenses : " + str(sum(rewards)))
+print("Les récompenses:" + str(rewards))
+# Tracer le graphe des récompenses
+
+
 
 
 #
@@ -702,7 +872,7 @@ else:
     print("usage: ./loraDir <nodes> <avgsend> <experi"
           "ment> <simtime> <sim_scenario> [collision]")
     print("experiment 0 and 1 use 1 frequency only")
-    exit(-1)
+    #exit(-1)
 
 # global stuff
 # Rnd = random.seed(12345)
@@ -735,6 +905,8 @@ elif experiment == 2:
     minsensi = -112.0  # no experiments, so value from datasheet
 elif experiment in [3, 5]:
     minsensi = np.amin(sensi)  ## Experiment 3 can use any setting, so take minimum
+
+print("experiment = ", minsensi)
 Lpl = Ptx - minsensi
 if (verbose >= 1):
     print("[INFO] - amin", minsensi, "Lpl", Lpl)
@@ -777,6 +949,8 @@ if (graphics == 1):
     plt.ylim([0, ymax])
     plt.draw()
     plt.show()
+#import gym
+
 
 # start simulation
 env.run(until=simtime)
