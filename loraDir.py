@@ -809,17 +809,6 @@ for episode in range(NUM_EPISODES):
         state = new_state
     rewards.append(episode_reward)
 
-# Afficher la matrice Q
-print(Q)
-
-# Afficher les récompenses moyennes par épisode
-print("Récompense moyenne par épisode : " + str(sum(rewards)/NUM_EPISODES))
-print("Somme des épisodes pour les recompenses : " + str(sum(rewards)))
-print("Les récompenses:" + str(rewards))
-# Tracer le graphe des récompenses
-
-
-
 
 #
 # "main" program
@@ -1035,6 +1024,14 @@ if (verbose>=1):
     print ("[INFO] - processed packets: ", nrProcessed)
     print ("[INFO] - lost packets: ", nrLost)
     print ("[INFO] - Tpream: ", Tpream)
+    # Afficher la matrice Q
+    print(Q)
+
+    # Afficher les récompenses moyennes par épisode
+    print("Récompense moyenne par épisode : " + str(sum(rewards) / NUM_EPISODES))
+    print("Somme des épisodes pour les recompenses : " + str(sum(rewards)))
+    print("Les récompenses:" + str(rewards))
+    # Tracer le graphe des récompenses
 
 
 # data extraction rate
