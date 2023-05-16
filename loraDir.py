@@ -38,6 +38,11 @@
         3   optimise the setting per node based on the distance to the gateway.
         4   use the settings as defined in LoRaWAN (SF12, BW125, CR4/5).
         5   similair to experiment 3, but also optimises the transmit power.
+        6   use reinforcement learn to optimize the settings for each node. 
+            Therefore SF will be selected in {SF7, .... SF12} and BW will be chosen in {BW125, BW250}. CR = 4/8
+            Frequency will be chosen in { 868.1, 868.3, 868.5}
+            Transmit power is set to 14 dBm
+            
     simtime
         total running time in milliseconds
     sim_scenario
@@ -148,6 +153,15 @@ sf9 = np.array([9, -131.25, -128.25, -127.5])
 sf10 = np.array([10, -132.75, -130.25, -128.75])
 sf11 = np.array([11, -134.5, -132.75, -128.75])
 sf12 = np.array([12, -133.25, -132.25, -132.25])
+
+
+LORAWAN_DR = np.array([[0, 12, 125],
+                      [1, 11, 125],
+                      [2, 10, 125],
+                      [3, 9, 125],
+                      [4, 8, 125],
+                      [5, 7, 125],
+                      [6, 7, 250]])
 
 
 #
@@ -437,6 +451,16 @@ class myPacket():
             self.cr = 1
             self.bw = 125
 
+        if experiment == 6:
+            # Exploration phase
+            DR = random.randint(0, 6)
+            # ToDO: Exploitation phase
+            # Chose DR according to Q matrice
+
+            self.sf = LORAWAN_DR[DR,1]
+            self.bw = LORAWAN_DR[DR,2]
+            self.cr = 1
+
         # for experiment 3 find the best setting
         # OBS, some hardcoded values
         Prx = self.txpow  ## zero path loss by default
@@ -502,6 +526,11 @@ class myPacket():
         # choose some random frequencies
         if experiment == 1:
             self.freq = random.choice([860000000, 864000000, 868000000])
+        elif experiment == 6:
+            # Exploration phase
+            self.freq = random.choice([860000000, 864000000, 868000000])
+            # ToDo : Exploitation phase
+            # Chose the frequency according to the Q learning matrice
         else:
             self.freq = 860000000
 
@@ -894,6 +923,9 @@ elif experiment == 2:
     minsensi = -112.0  # no experiments, so value from datasheet
 elif experiment in [3, 5]:
     minsensi = np.amin(sensi)  ## Experiment 3 can use any setting, so take minimum
+elif experiment == 6:
+    minsensi = np.amin(sensi[:,1:2])
+
 
 print("experiment = ", minsensi)
 Lpl = Ptx - minsensi
