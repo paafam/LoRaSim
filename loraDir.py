@@ -432,6 +432,7 @@ class myPacket():
             self.cr = 1
             self.bw = 500
         # lorawan
+
         if experiment == 4:
             self.sf = 12
             self.cr = 1
