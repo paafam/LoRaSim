@@ -131,7 +131,7 @@ mac_protocol = 0
 loadNodesLocation = 0
 
 # turn on/off graphics
-graphics = 0
+graphics = 1
 
 # do the full collision check
 full_collision = False
@@ -839,11 +839,17 @@ for episode in range(NUM_EPISODES):
     rewards.append(episode_reward)
 
 
-#
+#-----------------------------------------------------------------------------------------------------------------------#
 # "main" program
-#
+#-----------------------------------------------------------------------------------------------------------------------
 
 # get arguments
+if verbose>=1:
+    print("---------------------------------------------------------------------")
+    print(" Initializing configuration parameters for simulation")
+    print("---------------------------------------------------------------------")
+    print("[INFO] - Parsing arguments...")
+
 if len(sys.argv) >= 5:
     nrNodes = int(sys.argv[1])
     avgSendTime = int(sys.argv[2])
@@ -854,6 +860,8 @@ if len(sys.argv) >= 5:
         sim_scenario = int(sys.argv[5])
 
     # Create sim results directory
+    if verbose >= 1:
+        print("[INFO] - Creating simulation directory for storing simulation results...")
     if len(sys.argv) >= 7:
         # Directory is already created
         sim_results_path = results_path + '/' + str(sys.argv[6])
@@ -878,8 +886,8 @@ if len(sys.argv) >= 5:
         full_collision = bool(int(sys.argv[7]))
 
     if (verbose >= 1):
-        print("[INFO] - Nodes:", nrNodes)
-        print("[INFO] - AvgSendTime (exp. distributed):", avgSendTime)
+        print("[INFO] - Number of nodes:", nrNodes)
+        print("[INFO] - AvgSendTime (exp. distributed) lambda:", avgSendTime)
         print("[INFO] - Experiment: ", experiment)
         print("[INFO] - Simtime: ", simtime)
         print("[INFO] - Sim_scenario: ", sim_scenario)
@@ -896,6 +904,8 @@ else:
 # Rnd = random.seed(12345)
 nodes = []
 packetsAtBS = []
+if verbose >= 1:
+    print("[INFO] - Creating simpy environment and initialize global parameter")
 env = simpy.Environment()
 
 # maximum number of packets the BS can receive at the same time
@@ -909,6 +919,7 @@ nrReceived = 0
 nrProcessed = 0
 nrLost = 0
 
+# Packet transmission power in dBm
 Ptx = 14
 gamma = 2.08
 d0 = 40.0
@@ -926,22 +937,28 @@ elif experiment in [3, 5]:
 elif experiment == 6:
     minsensi = np.amin(sensi[:,1:2])
 
+if verbose>=1:
+    print("[INFO] - Minimum sensitivity for experimet is :", minsensi)
 
-print("experiment = ", minsensi)
 Lpl = Ptx - minsensi
 if (verbose >= 1):
     print("[INFO] - amin", minsensi, "Lpl", Lpl)
+
 maxDist = d0 * (math.e ** ((Lpl - Lpld0) / (10.0 * gamma)))
 if (verbose >= 1):
-    print("[INFO] - maxDist:", maxDist)
+    print("[INFO] - Maximum gateway coverage distance:", maxDist)
 
 # base station placement
+if verbose >=1:
+    print("[INFO] - Placing gateways...")
 bsx = maxDist + 10
 bsy = maxDist + 10
 xmax = bsx + maxDist + 20
 ymax = bsy + maxDist + 20
 
 # prepare graphics and add sink
+if verbose >=1:
+    print("[INFO] - Prepare graphics to show...")
 if (graphics == 1):
     plt.ion()
     plt.figure()
@@ -952,10 +969,13 @@ if (graphics == 1):
 
 # load node location from "nodes.txt" file if present and selected
 if loadNodesLocation:
+    if verbose >=1:
+        print("[INFO] - Loading node location from node location file...")
     if os.path.isfile('data/nodes.txt'):
         nodesPosition = np.loadtxt('data/nodes.txt')
         nrNodes = nodesPosition.shape[0]
         print(str(nodesPosition[1][1]) + "\n")
+
 
 for i in range(0, nrNodes):
     # myNode takes period (in ms), base station id packetlen (in Bytes)
@@ -972,9 +992,24 @@ if (graphics == 1):
     plt.show()
 #import gym
 
-
+#-----------------------------------------------------------------------------------------------------------------------
 # start simulation
+#-----------------------------------------------------------------------------------------------------------------------
+if verbose>=1:
+    print("---------------------------------------------------------------------")
+    print(" Starting simulation")
+    print("---------------------------------------------------------------------")
+
 env.run(until=simtime)
+# this can be done to keep graphics visible
+#if (graphics == 1):
+#    input('Press Enter to continue ...')
+#-----------------------------------------------------------------------------------------------------------------------
+
+if verbose>=1:
+    print("---------------------------------------------------------------------")
+    print(" End of simulation ! Preparing and saving results")
+    print("---------------------------------------------------------------------")
 
 # print stats and save into file
 if (verbose >= 1):
@@ -1074,9 +1109,7 @@ der2 = (nrReceived) / float(sent)
 if (verbose >= 1):
     print("[INFO] - DER method 2:", der2)
 
-# this can be done to keep graphics visible
-if (graphics == 1):
-    input('Press Enter to continue ...')
+
 
 # save experiment data into a dat file that can be read by e.g. gnuplot
 # name of file would be:  exp0.dat for experiment 0
