@@ -371,11 +371,11 @@ class myNode():
                             rounds = rounds + 1
                             if rounds == 100:
                                 if (verbose >= 1):
-                                    print("INFO: could not place new node, giving up")
+                                    print("[INFO] - could not place new node, giving up")
                                 exit(-1)
                 else:
                     if (verbose >= 3):
-                        print("[DEBUG] -  first node")
+                        print("[DEBUG] -  This is the first node")
                     self.x = posx
                     self.y = posy
                     found = 1
@@ -525,10 +525,10 @@ class myPacket():
         # for certain experiments override these and
         # choose some random frequencies
         if experiment == 1:
-            self.freq = random.choice([860000000, 864000000, 868000000])
+            self.freq = random.choice([868100000, 868300000, 868500000])
         elif experiment == 6:
             # Exploration phase
-            self.freq = random.choice([860000000, 864000000, 868000000])
+            self.freq = random.choice([868100000, 868300000, 868500000])
             # ToDo : Exploitation phase
             # Chose the frequency according to the Q learning matrice
         else:
@@ -569,35 +569,37 @@ def transmit(env, node):
         global verbose
         # A = random.expovariate(1.0 / float(node.period))
         if verbose >= 3:
-            print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_starting')
+            print("[DEBUG] ( " + str(env.now)+ " ) - Node("+ str(node.nodeid) + ') --> tx_starting at ' + str(env.now))
         if mac_protocol == 0:
             # Pure Aloha protocol
             nextTxInstant = random.expovariate(1.0 / float(node.period))
             if verbose >= 3:
-                print('[DEBUG] - ' + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> transmission is scheduled at ', env.now + nextTxInstant)
+                print("[DEBUG] ( " + str(env.now)+ " ) - Node("+ str(node.nodeid) + ') --> transmission is scheduled at ', env.now + nextTxInstant)
 
             yield env.timeout(nextTxInstant)
         elif mac_protocol == 1:
             # Slotted Aloha proocol
             nextTxInstant = random.expovariate(1.0 / float(node.period))
             if nextTxInstant in txInstantVector:
-                if (verbose >= 1):
-                    print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
+                if verbose >= 3:
+                    print("[DEBUG] ( " + str(env.now) + " ) - Node(" + str(
+                        node.nodeid) + ') --> transmission is scheduled at ', env.now + nextTxInstant)
 
                 yield env.timeout(nextTxInstant)
             else:
                 delayTime = slot_time - (nextTxInstant % slot_time)
                 nextTxInstant = nextTxInstant + delayTime
-                if (verbose >= 1):
-                    print("INFO: transmission of the packet is delayed of ", delayTime, "[ s]")
-                    print("INFO: new transmission is scheduled at ", env.now + nextTxInstant)
+                if (verbose >= 3):
+                    print("[DEBUG] ( " + str(env.now) + " ) - Node(" + str(node.nodeid) + ') --> transmission of the packet is delayed of ', delayTime, "[ s]")
+                    print("[DEBUG] ( " + str(env.now) + " ) - Node(" + str(node.nodeid) + ') --> transmission is scheduled at ', env.now + nextTxInstant)
                 yield env.timeout(nextTxInstant)
         else:
             # Default MAC protocol : Pure Aloha
             # Pure Aloha protocol
             nextTxInstant = random.expovariate(1.0 / float(node.period))
-            if (verbose >= 1):
-                print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
+            if verbose >= 3:
+                print("[DEBUG] ( " + str(env.now) + " ) - Node(" + str(
+                    node.nodeid) + ') --> transmission is scheduled at ', env.now + nextTxInstant)
             yield env.timeout(nextTxInstant)
 
         # time sending and receiving
