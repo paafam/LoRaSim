@@ -38,8 +38,19 @@
         3   optimise the setting per node based on the distance to the gateway.
         4   use the settings as defined in LoRaWAN (SF12, BW125, CR4/5).
         5   similair to experiment 3, but also optimises the transmit power.
+        6   use reinforcement learn to optimize the settings for each node. 
+            Therefore SF will be selected in {SF7, .... SF12} and BW will be chosen in {BW125, BW250}. CR = 4/8
+            Frequency will be chosen in { 868.1, 868.3, 868.5}
+            Transmit power is set to 14 dBm
+            
     simtime
         total running time in milliseconds
+    sim_scenario
+        sim_scenario determines the scenario used for simulation purposes. 
+        Default value is 0
+        0   all frames are unconfirmed frame
+        1   all frames are confirmed frame, a 13 bytes ACK frame is sent on the first RX1 window
+        2   all frames are confirmed frame, a 13 bytes ACK frame is sent on the second RX2 window
     collision
         set to 1 to enable the full collision check, 0 to use a simplified check.
         With the simplified check, two messages collide when they arrive at the
@@ -55,15 +66,14 @@
     > python loraDir.py 100 1000000 1 5011200000
 
 """
-
 import simpy
-
 import random
 import numpy as np
 import math
 import sys
 import matplotlib.pyplot as plt
 import os
+from datetime import datetime
 
 # Verbose:
 # 0 : SILENT mode
@@ -72,7 +82,6 @@ import os
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
 verbose = 3
-
 Tpream = 0
 
 RX1_DELAY = 1000    # RX1 Delay in ms
@@ -85,12 +94,37 @@ TX = [22, 22, 22, 23,  # RFO/PA0: -2..1
       105, 115, 125]  # PA_BOOST/PA1+PA2: 18..20
 # mA = 90    # current draw for TX = 17 dBm
 
+# Get runtime
+now = datetime.now()
+# detect the current working directory
+path = os.getcwd()
+if verbose >=1:
+    print ("[INFO] - current working directory is %s " % path)
+
+data_path   = path + "/data"
+# Create results directory
+results_path = path + "/results"
+try:
+    os.mkdir(results_path)
+except OSError:
+    if verbose >=2:
+        print ("[ERROR] - Creation of the directory %s failed" % results_path)
+    if os.path.isdir(results_path):
+        if verbose >= 2:
+            print('[ERROR] - Directory already exist')
+else:
+    if verbose >= 1:
+        print ("[INFO] - Successfully created the directory %s " % results_path)
+
+# Create sim directory in results directory
+dt_string = now.strftime("%Y%m%d-%H%M%S")
+sim_results_path = results_path + "/sim_"+dt_string
 
 # Simulation scenario
-# 0 : all frame are unconfirmed frame
+# 0 : all frame are unconfirmed frame (default value)
 # 1 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the first RX1 window
 # 2 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the second RX2 window
-sim_scenario = 0
+sim_scenario = 0	# This is the default value
 
 # MAC protocol selection
 # 0 : Pure Aloha
@@ -102,7 +136,7 @@ mac_protocol = 0
 loadNodesLocation = 0
 
 # turn on/off graphics
-graphics = 0
+graphics = 1
 
 # do the full collision check
 full_collision = False
@@ -113,7 +147,7 @@ full_collision = False
 # 2: with shortest packets, still aloha-style
 # 3: with shortest possible packets depending on distance
 
-# Store frequency channels usage for freq: 860000000, 864000000, 868000000
+# Store frequency channels usage for freq: 868100000, 868300000, 868500000
 global_freq_usage = [0, 0, 0]
 
 # this is an array with measured values for sensitivity
@@ -125,6 +159,13 @@ sf10 = np.array([10, -132.75, -130.25, -128.75])
 sf11 = np.array([11, -134.5, -132.75, -128.75])
 sf12 = np.array([12, -133.25, -132.25, -132.25])
 
+LORAWAN_DR = np.array([[0, 12, 125],
+                      [1, 11, 125],
+                      [2, 10, 125],
+                      [3, 9, 125],
+                      [4, 8, 125],
+                      [5, 7, 125],
+                      [6, 7, 250]])
 
 #
 # check for collisions at base station
@@ -136,20 +177,20 @@ def checkcollision(packet):
         if packetsAtBS[i].ul_packet.processed == 1:
             processing = processing + 1
     if (processing > maxBSReceives):
-        if (verbose >= 1):
-            print("INFO: too long:", len(packetsAtBS))
+        if (verbose >= 3):
+            print("[DEBUG] - Packet is too long:", len(packetsAtBS))
         packet.processed = 0
     else:
         packet.processed = 1
 
     if packetsAtBS:
-        if (verbose >= 1):
-            print("INFO: CHECK node {} (sf:{} bw:{} freq:{:.6e}) others: {}".format(packet.nodeid, packet.sf, packet.bw,
+        if (verbose >= 3):
+            print("[DEBUG] - CHECK node {} (sf:{} bw:{} freq:{:.6e}) others: {}".format(packet.nodeid, packet.sf, packet.bw,
                                                                                     packet.freq, len(packetsAtBS)))
         for other in packetsAtBS:
             if other.nodeid != packet.nodeid:
-                if (verbose >= 1):
-                    print("INFO: >> node {} (sf:{} bw:{} freq:{:.6e})".format(other.nodeid, other.ul_packet.sf,
+                if (verbose >= 3):
+                    print("[DEBUG] - >> node {} (sf:{} bw:{} freq:{:.6e})".format(other.nodeid, other.ul_packet.sf,
                                                                               other.ul_packet.bw, other.ul_packet.freq))
                 # simple collision
                 if frequencyCollision(packet, other.ul_packet) and sfCollision(packet, other.ul_packet):
@@ -182,54 +223,54 @@ def checkcollision(packet):
 #        |f1-f2| <= 30 kHz if f1 or f2 has bw 125
 def frequencyCollision(p1, p2):
     if (abs(p1.freq - p2.freq) <= 120 and (p1.bw == 500 or p2.freq == 500)):
-        if (verbose >= 1):
-            print("INFO: frequency coll 500")
+        if (verbose >= 3):
+            print("[DEBUG] - frequency coll 500")
         return True
     elif (abs(p1.freq - p2.freq) <= 60 and (p1.bw == 250 or p2.freq == 250)):
-        if (verbose >= 1):
-            print("INFO: frequency coll 250")
+        if (verbose >= 3):
+            print("[DEBUG] - frequency coll 250")
         return True
     else:
         if (abs(p1.freq - p2.freq) <= 30):
-            if (verbose >= 1):
-                print("INFO: frequency coll 125")
+            if (verbose >= 3):
+                print("[DEBUG] - frequency coll 125")
             return True
             # else:
-            if verbose >= 1:
-                print("INFO: no frequency coll")
+            if verbose >= 3:
+                print("[DEBUG] - no frequency coll")
     return False
 
 
 def sfCollision(p1, p2):
     if p1.sf == p2.sf:
-        if (verbose >= 1):
-            print("INFO: collision sf node {} and node {}".format(p1.nodeid, p2.nodeid))
+        if (verbose >= 3):
+            print("[DEBUG] - collision sf node {} and node {}".format(p1.nodeid, p2.nodeid))
         # p2 may have been lost too, will be marked by other checks
         return True
-    if (verbose >= 1):
-        print("INFO: no sf collision")
+    if (verbose >= 3):
+        print("[DEBUG] - no sf collision")
     return False
 
 
 def powerCollision(p1, p2):
     powerThreshold = 6  # dB
-    if (verbose >= 1):
+    if (verbose >= 3):
         print(
-            "INFO: pwr: node {0.nodeid} {0.rssi:3.2f} dBm node {1.nodeid} {1.rssi:3.2f} dBm; diff {2:3.2f} dBm".format(
+            "[DEBUG] -  pwr: node {0.nodeid} {0.rssi:3.2f} dBm node {1.nodeid} {1.rssi:3.2f} dBm; diff {2:3.2f} dBm".format(
                 p1, p2, round(p1.rssi - p2.rssi, 2)))
     if abs(p1.rssi - p2.rssi) < powerThreshold:
-        if (verbose >= 1):
-            print("INFO: collision pwr both node {} and node {}".format(p1.nodeid, p2.nodeid))
+        if (verbose >= 3):
+            print("[DEBUG] - collision pwr both node {} and node {}".format(p1.nodeid, p2.nodeid))
         # packets are too close to each other, both collide
         # return both packets as casualties
         return (p1, p2)
     elif p1.rssi - p2.rssi < powerThreshold:
         # p2 overpowered p1, return p1 as casualty
         if (verbose >= 1):
-            print("INFO: collision pwr node {} overpowered node {}".format(p2.nodeid, p1.nodeid))
+            print("[DEBUG] - collision pwr node {} overpowered node {}".format(p2.nodeid, p1.nodeid))
         return (p1,)
     if (verbose >= 1):
-        print("INFO: p1 wins, p2 lost")
+        print("[DEBUG] - p1 wins, p2 lost")
     # p2 was the weaker packet, return it as a casualty
     return (p2,)
 
@@ -249,17 +290,17 @@ def timingCollision(p1, p2):
     p2_end = p2.addTime + p2.rectime
     p1_cs = env.now + Tpreamb
     if (verbose >= 1):
-        print("INFO: collision timing node {} ({},{},{}) node {} ({},{})".format(p1.nodeid, env.now - env.now,
+        print("[DEBUG] - collision timing node {} ({},{},{}) node {} ({},{})".format(p1.nodeid, env.now - env.now,
                                                                                  p1_cs - env.now, p1.rectime, p2.nodeid,
                                                                                  p2.addTime - env.now,
                                                                                  p2_end - env.now))
     if p1_cs < p2_end:
         # p1 collided with p2 and lost
         if (verbose >= 1):
-            print("INFO: not late enough")
+            print("[DEBUG] - not late enough")
         return True
     if (verbose >= 1):
-        print("INFO: saved by the preamble")
+        print("[DEBUG] - saved by the preamble")
     return False
 
 
@@ -268,8 +309,8 @@ def timingCollision(p1, p2):
 #
 def airtime(sf, cr, pl, bw):
     global Tpream
-    H = 0  # implicit header disabled (H=0) or not (H=1)
-    DE = 0  # low data rate optimization enabled (=1) or not (=0)
+    H = 0  		# implicit header disabled (H=0) or not (H=1)
+    DE = 0  	# low data rate optimization enabled (=1) or not (=0)
     Npream = 8  # number of preamble symbol (12.25  from Utz paper)
 
     if bw == 125 and sf in [11, 12]:
@@ -281,8 +322,8 @@ def airtime(sf, cr, pl, bw):
 
     Tsym = (2.0 ** sf) / bw
     Tpream = (Npream + 4.25) * Tsym
-    if (verbose >= 1):
-        print("INFO: sf", sf, " cr", cr, "pl", pl, "bw", bw)
+    if (verbose >= 3):
+        print("[DEBUG] - sf", sf, " cr", cr, "pl", pl, "bw", bw)
     payloadSymbNB = 8 + max(math.ceil((8.0 * pl - 4.0 * sf + 28 + 16 - 20 * H) / (4.0 * (sf - 2 * DE))) * (cr + 4), 0)
     Tpayload = payloadSymbNB * Tsym
 
@@ -300,10 +341,6 @@ class myNode():
         self.bs = bs
         self.x = 0
         self.y = 0
-
-
-
-
 
         # This refers to the packet size of an ACK frame (i.e. without app payload)
         dl_packetlen = 13
@@ -339,18 +376,18 @@ class myNode():
                             rounds = rounds + 1
                             if rounds == 100:
                                 if (verbose >= 1):
-                                    print("INFO: could not place new node, giving up")
+                                    print("[INFO] - Could not place a new node, giving up")
                                 exit(-1)
                 else:
-                    if (verbose >= 1):
-                        print("INFO: first node")
+                    if (verbose >= 3):
+                        print("[DEBUG] - This is the first node")
                     self.x = posx
                     self.y = posy
                     found = 1
 
         self.dist = np.sqrt((self.x - bsx) * (self.x - bsx) + (self.y - bsy) * (self.y - bsy))
-        if (verbose >= 1):
-            print(('INFO: node %d' % node_id, "x", self.x, "y", self.y, "dist: ", self.dist))
+        if (verbose >= 3):
+            print(('[DEBUG] - node %d' % node_id, "x", self.x, "y", self.y, "dist: ", self.dist))
         if sim_scenario == 0:
             self.ul_packet = myPacket(self.nodeid, packetlen, self.dist,'unconfirmed')
             self.dl_packet = myPacket(self.nodeid, dl_packetlen, self.dist, 'unconfirmed')
@@ -368,9 +405,9 @@ class myNode():
         self.ack_received = 0
 
         # Node frequency usage. Incremented each time a packet is sent using one of these frequency channels
-        # freq_usage[0] = 860000000,
-        # freq_usage[1] = 864000000,
-        # freq_usage[2] = 868000000
+        # freq_usage[0] = 868100000,
+        # freq_usage[1] = 868300000,
+        # freq_usage[2] = 868500000
         self.freq_usage = [0, 0, 0]
         self.freq_usage_ack_received = [0, 0, 0]
 
@@ -396,6 +433,8 @@ class myNode():
         if (graphics == 1):
             global ax
             ax.add_artist(plt.Circle((self.x, self.y), 2, fill=True, color='blue'))
+            if verbose < 3:
+                print("[DEBUG] - Placing node {} on the graphics".format(self.nodeid))
 
 
 #
@@ -413,10 +452,7 @@ class myPacket():
         global GL
 
         self.nodeid = nodeid
-
-
         self.txpow = Ptx
-
         self.MType = frame_type
 
         # randomize configuration values
@@ -440,6 +476,14 @@ class myPacket():
             self.sf = 12
             self.cr = 1
             self.bw = 125
+        if experiment == 6:
+            # Exploration phase
+            DR = random.randint(0, 6)
+            # ToDO: Exploitation phase
+            # Chose DR according to Q matrice
+            self.sf = LORAWAN_DR[DR,1]
+            self.bw = LORAWAN_DR[DR,2]
+            self.cr = 1
 
         # for experiment 3 find the best setting
         # OBS, some hardcoded values
@@ -447,8 +491,8 @@ class myPacket():
 
         # log-shadow
         Lpl = Lpld0 + 10 * gamma * math.log10(distance / d0)
-        if (verbose >= 1):
-            print("INFO: Lpl:", Lpl)
+        if (verbose >= 3):
+            print("[DEBUG] - Lpl:", Lpl)
         Prx = self.txpow - GL - Lpl
 
         if (experiment == 3) or (experiment == 5):
@@ -456,8 +500,8 @@ class myPacket():
             minsf = 0
             minbw = 0
 
-            if (verbose >= 1):
-                print("INFO: Prx:", Prx)
+            if (verbose >= 3):
+                print("[DEBUG] - Prx:", Prx)
 
             for i in range(0, 6):
                 for j in range(1, 4):
@@ -476,11 +520,11 @@ class myPacket():
                             minbw = self.bw
                             minsensi = sensi[i, j]
             if (minairtime == 9999):
-                if (verbose >= 1):
-                    print("INFO: does not reach base station")
+                if (verbose >= 3):
+                    print("[DEBUG] - Packet does not reach base station")
                 exit(-1)
-            if (verbose >= 1):
-                print("INFO: best sf:", minsf, " best bw: ", minbw, "best airtime:", minairtime)
+            if (verbose >= 3):
+                print("[DEBUG] - best sf:", minsf, " best bw: ", minbw, "best airtime:", minairtime)
             self.rectime = minairtime
             self.sf = minsf
             self.bw = minbw
@@ -490,8 +534,8 @@ class myPacket():
                 # reduce the txpower if there's room left
                 self.txpow = max(2, self.txpow - math.floor(Prx - minsensi))
                 Prx = self.txpow - GL - Lpl
-                if (verbose >= 1):
-                    print('INFO: minsesi {} best txpow {}'.format(minsensi, self.txpow))
+                if (verbose >= 3):
+                    print('[DEBUG] - minsesi {} best txpow {}'.format(minsensi, self.txpow))
 
         # transmission range, needs update XXX
         self.transRange = 150
@@ -500,21 +544,21 @@ class myPacket():
         self.arriveTime = 0
         self.rssi = Prx
         # frequencies: lower bound + number of 61 Hz steps
-        self.freq = 860000000 + random.randint(0, 2622950)
+        self.freq = 868100000 + random.randint(0, 2622950)
 
         # for certain experiments override these and
         # choose some random frequencies
         if experiment == 1:
-            self.freq = random.choice([860000000, 864000000, 868000000])
+            self.freq = random.choice([868100000, 868300000, 868500000])
         else:
-            self.freq = 860000000
+            self.freq = 868100000
 
-        if (verbose >= 1):
-            print("INFO: frequency", self.freq, "symTime ", self.symTime)
-            print("INFO: bw", self.bw, "sf", self.sf, "cr", self.cr, "rssi", self.rssi)
+        if (verbose >= 3):
+            print("[DEBUG] - Frequency", self.freq, "symTime ", self.symTime)
+            print("[DEBUG] - bw", self.bw, "sf", self.sf, "cr", self.cr, "rssi", self.rssi)
         self.rectime = airtime(self.sf, self.cr, self.pl, self.bw)
-        if (verbose >= 1):
-            print("INFO: rectime node ", self.nodeid, "  ", self.rectime)
+        if (verbose >= 3):
+            print("[DEBUG] - Rectime node ", self.nodeid, "  ", self.rectime)
         # denote if packet is collided
         self.collided = 0
         self.processed = 0
@@ -565,7 +609,6 @@ def transmit(env, node):
         global txInstantVector
         global slot_time
         global verbose
-
         # Transmission procedure depends on LORAWAN node classes
         if node.nodeclass == 'Class_C':
             # TODO: Implementation of LORAWAN Class C
@@ -579,13 +622,12 @@ def transmit(env, node):
             # Default is Class A
             if verbose >= 3:
                 print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> Class_A')
-                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_starting')
+                print("[DEBUG] - ( " + str(env.now)+ " ) - Node("+ str(node.nodeid) + ') --> tx_starting at ' + str(env.now))
 
             # Step 1 : Choose an arbitrary instant to transmit according to  MAC protocol
             nextTxInstant = get_channel_access_instant(node,mac_protocol)
             if verbose >= 3:
-                print('[DEBUG] - --- Node ' + str(node.nodeid) + ' --> transmission is scheduled at ',
-                      env.now + nextTxInstant)
+                print("[DEBUG] - ( " + str(env.now)+ " ) - Node("+ str(node.nodeid) + ') --> transmission is scheduled at ', env.now + nextTxInstant)
             # wait until that instant, then send the packet
             node.Sleep_time += (env.now + nextTxInstant) - node.goto_sleep_instant
             yield env.timeout(nextTxInstant)
@@ -597,24 +639,24 @@ def transmit(env, node):
             # Step 2 : send packet
             node.sent = node.sent + 1
             if verbose >= 3:
-                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_done, packet is sent')
+                print("[DEBUG] - ( " + str(env.now)+ " ) - Node("+ str(node.nodeid) + ') --> Tx_done, Packet is sent')
 
             # save frequency channels usage freq: 860000000, 864000000, 868000000
-            if node.ul_packet.freq == 860000000:
+            if node.ul_packet.freq == 868100000:
                 node.freq_usage[0] += 1
                 global_freq_usage[0] += 1
-            elif node.ul_packet.freq == 864000000:
+            elif node.ul_packet.freq == 868300000:
                 node.freq_usage[1] += 1
                 global_freq_usage[1] += 1
-            elif node.ul_packet.freq == 868000000:
+            elif node.ul_packet.freq == 868500000:
                 node.freq_usage[2] += 1
                 global_freq_usage[2] += 1
 
             # Step 3 : wait packet to arrive at base station, then add packet to BS processing queue
-            # packet arrives -> add to base station
+            # packet arrives -> add it to base station queue
             if node in packetsAtBS:
                 if verbose >= 2:
-                    print("[ERROR] - packet already in")
+                    print("[ERROR] - packet already in BS queue")
             else:
                 sensitivity = sensi[node.ul_packet.sf - 7, [125, 250, 500].index(node.ul_packet.bw) + 1]
                 if node.ul_packet.rssi < sensitivity:
@@ -730,31 +772,60 @@ def transmit(env, node):
 
 
 
-#
+#-----------------------------------------------------------------------------------------------------------------------#
 # "main" program
-#
+#-----------------------------------------------------------------------------------------------------------------------
 
 # get arguments
+if verbose>=1:
+    print("---------------------------------------------------------------------")
+    print(" Initializing configuration parameters for simulation")
+    print("---------------------------------------------------------------------")
+    print("[INFO] - Parsing arguments...")
+
 if len(sys.argv) >= 5:
     nrNodes = int(sys.argv[1])
     avgSendTime = int(sys.argv[2])
     experiment = int(sys.argv[3])
     simtime = int(sys.argv[4])
 
+    if len(sys.argv) >= 6:
+        sim_scenario = int(sys.argv[5])
+
+    # Create sim results directory
+    if verbose >= 1:
+        print("[INFO] - Creating simulation directory for storing simulation results...")
+
+    if len(sys.argv) >= 7:
+        # Directory is already created
+        sim_results_path = results_path + '/' + str(sys.argv[6])
+    else:
+        # We need to create the directory
+        try:
+            os.mkdir(sim_results_path)
+        except OSError:
+            if verbose>=1:
+                print("[ERROR] - Creation of the directory %s failed" % sim_results_path)
+            if os.path.isdir(sim_results_path):
+                if verbose>=1:
+                    print('[ERROR] - Directory already exist')
+            else:
+                if verbose>=1:
+                    print("[INFO] - Successfully created the directory %s " % sim_results_path)
     # instant de transmission et durée d'un slot pour le Aloha sloté
     if (mac_protocol == 1):
         slot_time = 100
         txInstantVector = np.arange(0, simtime, slot_time)
-
-    if len(sys.argv) > 5:
-        full_collision = bool(int(sys.argv[5]))
-
-    if (verbose >= 1):
-        print("Nodes:", nrNodes)
-        print("AvgSendTime (exp. distributed):", avgSendTime)
-        print("Experiment: ", experiment)
-        print("Simtime: ", simtime)
-        print("Full Collision: ", full_collision)
+    if len(sys.argv) > 7:
+        full_collision = bool(int(sys.argv[7]))
+        if (verbose >= 1):
+            print("[INFO] - Number of nodes:", nrNodes)
+            print("[INFO] - AvgSendTime (exp. distributed) lambda:", avgSendTime)
+            print("[INFO] - Experiment: ", experiment)
+            print("[INFO] - Simtime: ", simtime)
+            print("[INFO] - Sim_scenario: ", sim_scenario)
+            print("[INFO] - Sim_result_path: ", sim_results_path)
+            print("[INFO] - Full Collision: ", full_collision)
 else:
     print("usage: ./loraDir <nodes> <avgsend> <experi"
           "ment> <simtime> [collision]")
@@ -766,6 +837,8 @@ else:
 nodes = []
 lorawan_class = 'Class_A'
 packetsAtBS = []
+if verbose >= 1:
+    print("[INFO] - Creating simpy environment and initialize global parameter")
 env = simpy.Environment()
 
 # maximum number of packets the BS can receive at the same time
@@ -793,20 +866,29 @@ elif experiment == 2:
     minsensi = -112.0  # no experiments, so value from datasheet
 elif experiment in [3, 5]:
     minsensi = np.amin(sensi)  ## Experiment 3 can use any setting, so take minimum
+elif experiment == 6:
+    minsensi = np.amin(sensi[:,1:2])
+if verbose>=1:
+    print("[INFO] - Minimum sensitivity for experimet is :", minsensi)
+
 Lpl = Ptx - minsensi
 if (verbose >= 1):
-    print("amin", minsensi, "Lpl", Lpl)
+    print("[INFO] - amin", minsensi, "Lpl", Lpl)
 maxDist = d0 * (math.e ** ((Lpl - Lpld0) / (10.0 * gamma)))
 if (verbose >= 1):
-    print("maxDist:", maxDist)
+    print("[INFO] - Maximum gateway coverage distance:", maxDist)
 
 # base station placement
+if verbose >=1:
+    print("[INFO] - Placing gateways...")
 bsx = maxDist + 10
 bsy = maxDist + 10
 xmax = bsx + maxDist + 20
 ymax = bsy + maxDist + 20
 
 # prepare graphics and add sink
+if verbose >=1:
+    print("[INFO] - Prepare graphics to show...")
 if (graphics == 1):
     plt.ion()
     plt.figure()
@@ -817,8 +899,10 @@ if (graphics == 1):
 
 # load node location from "nodes.txt" file if present and selected
 if loadNodesLocation:
-    if os.path.isfile('nodes.txt'):
-        nodesPosition = np.loadtxt('nodes.txt')
+    if verbose >=1:
+        print("[INFO] - Loading node location from node location file...")
+    if os.path.isfile('data/nodes.txt'):
+        nodesPosition = np.loadtxt('data/nodes.txt')
         nrNodes = nodesPosition.shape[0]
         print(str(nodesPosition[1][1]) + "\n")
 
@@ -836,8 +920,24 @@ if (graphics == 1):
     plt.draw()
     plt.show()
 
+#-----------------------------------------------------------------------------------------------------------------------
 # start simulation
+#-----------------------------------------------------------------------------------------------------------------------
+if verbose>=1:
+    print("---------------------------------------------------------------------")
+    print(" Starting simulation")
+    print("---------------------------------------------------------------------")
+
 env.run(until=simtime)
+# this can be done to keep graphics visible
+#if (graphics == 1):
+#    input('Press Enter to continue ...')
+#-----------------------------------------------------------------------------------------------------------------------
+
+if verbose>=1:
+    print("---------------------------------------------------------------------")
+    print(" End of simulation ! Preparing and saving results")
+    print("---------------------------------------------------------------------")
 
 # print stats and save into file
 if (verbose >= 1):
