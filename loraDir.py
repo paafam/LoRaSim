@@ -100,8 +100,21 @@ now = datetime.now()
 path = os.getcwd()
 if verbose >=1:
     print ("[INFO] - current working directory is %s " % path)
-
+# Create data directory
 data_path   = path + "/data"
+try:
+    os.mkdir(data_path)
+except OSError:
+    if verbose >=2:
+        print ("[ERROR] - Creation of the directory %s failed" % data_path)
+    if os.path.isdir(data_path):
+        if verbose >= 2:
+            print('[ERROR] - Directory already exist')
+else:
+    if verbose >= 1:
+        print ("[INFO] - Successfully created the directory %s " % data_path)
+
+
 # Create results directory
 results_path = path + "/results"
 try:
@@ -133,7 +146,7 @@ sim_scenario = 0	# This is the default value
 mac_protocol = 0
 
 # Load nodes location from file
-loadNodesLocation = 0
+loadNodesLocation = 1
 
 # turn on/off graphics
 graphics = 1
@@ -1009,8 +1022,11 @@ with open(fname, "a") as myfile:
 
 myfile.close()
 
-with open('nodes.txt', 'w') as nfile:
-    for n in nodes:
-        nfile.write("{} {} {}\n".format(n.x, n.y, n.nodeid))
-with open('basestation.txt', 'w') as bfile:
-    bfile.write("{} {} {}\n".format(bsx, bsy, 0))
+if not loadNodesLocation:
+    if verbose >=1:
+        print("[INFO] - saving node location to nodes.txt and bs location to basestation.txt...")
+    with open(data_path+'/nodes.txt', 'w') as nfile:
+        for n in nodes:
+            nfile.write("{} {} {}\n".format(n.x, n.y, n.nodeid))
+    with open(data_path+'/basestation.txt', 'w') as bfile:
+        bfile.write("{} {} {}\n".format(bsx, bsy, 0))
