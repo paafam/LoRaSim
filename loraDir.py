@@ -78,7 +78,7 @@ from datetime import datetime
 # 2 : ERROR mode : only error messages are printed
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
-verbose = 0
+verbose = 1
 Tpream = 0
 
 # Get runtime
@@ -96,17 +96,19 @@ try:
     os.mkdir(results_path)
 except OSError:
     if verbose >= 2:
-        print("[ERROR] - Creation of the directory %s failed" % results_path)
+        print("[ERROR] - Creation of the directory ", results_path," failed")
     if os.path.isdir(results_path):
         if verbose >= 2:
             print('[ERROR] - Directory already exist')
-else:
-    if verbose >= 1:
-        print("[INFO] - Successfully created the directory %s " % results_path)
+    else:
+        if verbose >= 1:
+            print("[INFO] - Successfully created the directory")
+
 
 # Create sim directory in results directory
 dt_string = now.strftime("%Y%m%d-%H%M%S")
-sim_results_path = results_path + "/sim_" + dt_string
+sim_results_path = str(results_path+"/sim_"+dt_string)
+
 
 # Simulation scenario
 # 0 : all frame are unconfirmed frame
@@ -692,8 +694,7 @@ if len(sys.argv) >= 5:
     simtime = int(sys.argv[4])
 
     if len(sys.argv) >= 6:
-        sim_scenario = \
-            int(sys.argv[5])
+        sim_scenario = int(sys.argv[5])
 
     # Create sim results directory
     if len(sys.argv) >= 7:
@@ -915,6 +916,10 @@ der2 = (nrReceived) / float(sent)
 if (verbose >= 1):
     print("[INFO] - DER method 2:", der2)
 
+for i in range(0, nrNodes):
+    print("matrice Q du noeud", i, "est:\n", nodes[i].Q_matrix)  # Chaque noeud a sa matrice Q
+    print("récompense du noeud", i, "est", nodes[i].reward)
+    print("sanction du noeud", i, "est", nodes[i].nreward)
 # this can be done to keep graphics visible
 if (graphics == 1):
     input('Press Enter to continue ...')
@@ -923,8 +928,7 @@ if (graphics == 1):
 # name of file would be:  exp0.dat for experiment 0
 
 
-fname = sim_results_path + "/sim_results_exp" + str(experiment) + "_mac" + str(mac_protocol) + "_scenario" + str(
-    sim_scenario) + ".dat"
+fname = sim_results_path + "/sim_results_exp" + str(experiment) + "_mac" + str(mac_protocol) + "_scenario" + str(sim_scenario) + ".dat"
 
 if (verbose >= 1):
     print(fname)
@@ -940,14 +944,14 @@ else:
         nrReceived) + " " + str(nrProcessed) + " " + str(nrLost) + " " + str(sent) + " " + str(energy1) + " " + str(
         energyT) + " " + str(der1) + " " + str(der2)
     # res2 = "#simtime avgSendTime nrNodes nrCollisions nrReceived nrProcessed nrLost nrTransmissions OverallEnergy\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
-with open(fname, "a") as myfile:
-    myfile.write(res1)
-    # myfile.write(res2)
+#with open(fname, "a") as myfile:
+#    myfile.write(res1)
+#    # myfile.write(res2)
 
-myfile.close()
+#myfile.close()
 
-with open('nodes.txt', 'w') as nfile:
-    for n in nodes:
-        nfile.write("{} {} {}\n".format(n.x, n.y, n.nodeid))
-with open('basestation.txt', 'w') as bfile:
-    bfile.write("{} {} {}\n".format(bsx, bsy, 0))
+#with open('nodes.txt', 'w') as nfile:
+#    for n in nodes:
+#        nfile.write("{} {} {}\n".format(n.x, n.y, n.nodeid))
+#with open('basestation.txt', 'w') as bfile:
+ #   bfile.write("{} {} {}\n".format(bsx, bsy, 0))
