@@ -22,7 +22,7 @@
  SYNOPSIS:
    ./loraDir.py <nodes> <avgsend> <experiment> <simtime> [collision]
  DESCRIPTION:
- 
+
     nodes
         number of nodes to simulate
     avgsend
@@ -38,11 +38,6 @@
         3   optimise the setting per node based on the distance to the gateway.
         4   use the settings as defined in LoRaWAN (SF12, BW125, CR4/5).
         5   similair to experiment 3, but also optimises the transmit power.
-        6   use reinforcement learn to optimize the settings for each node. 
-            Therefore SF will be selected in {SF7, .... SF12} and BW will be chosen in {BW125, BW250}. CR = 4/8
-            Frequency will be chosen in { 868.1, 868.3, 868.5}
-            Transmit power is set to 14 dBm
-            
     simtime
         total running time in milliseconds
     sim_scenario
@@ -61,12 +56,12 @@
     whereby X is the experiment number. The file contains a space separated table
     of values for nodes, collisions, transmissions and total energy spent. The
     data file can be easily plotted using e.g. gnuplot.
-    
+
  EXAMPLE
     > python loraDir.py 100 1000000 1 0 5011200000
 
 """
-#import lora1
+
 import math
 import os
 import random
@@ -83,7 +78,7 @@ from datetime import datetime
 # 2 : ERROR mode : only error messages are printed
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
-verbose = 3
+verbose = 0
 Tpream = 0
 
 # Get runtime
@@ -91,35 +86,33 @@ now = datetime.now()
 
 # detect the current working directory
 path = os.getcwd()
-if verbose >=1:
-    print ("[INFO] - current working directory is %s " % path)
+if verbose >= 1:
+    print("[INFO] - current working directory is %s " % path)
 
-
-data_path   = path + "/data"
+data_path = path + "/data"
 # Create results directory
 results_path = path + "/results"
 try:
     os.mkdir(results_path)
 except OSError:
-    if verbose >=2:
-        print ("[ERROR] - Creation of the directory %s failed" % results_path)
+    if verbose >= 2:
+        print("[ERROR] - Creation of the directory %s failed" % results_path)
     if os.path.isdir(results_path):
         if verbose >= 2:
             print('[ERROR] - Directory already exist')
 else:
     if verbose >= 1:
-        print ("[INFO] - Successfully created the directory %s " % results_path)
+        print("[INFO] - Successfully created the directory %s " % results_path)
 
 # Create sim directory in results directory
 dt_string = now.strftime("%Y%m%d-%H%M%S")
-sim_results_path = results_path + "/sim_"+dt_string
-
+sim_results_path = results_path + "/sim_" + dt_string
 
 # Simulation scenario
 # 0 : all frame are unconfirmed frame
 # 1 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the first RX1 window
 # 2 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the second RX2 window
-sim_scenario = 0    # This is the default value
+sim_scenario = 1  # This is the default value
 
 # MAC protocol selection
 # 0 : Pure Aloha
@@ -154,14 +147,13 @@ sf10 = np.array([10, -132.75, -130.25, -128.75])
 sf11 = np.array([11, -134.5, -132.75, -128.75])
 sf12 = np.array([12, -133.25, -132.25, -132.25])
 
-
 LORAWAN_DR = np.array([[0, 12, 125],
-                      [1, 11, 125],
-                      [2, 10, 125],
-                      [3, 9, 125],
-                      [4, 8, 125],
-                      [5, 7, 125],
-                      [6, 7, 250]])
+                       [1, 11, 125],
+                       [2, 10, 125],
+                       [3, 9, 125],
+                       [4, 8, 125],
+                       [5, 7, 125],
+                       [6, 7, 250]])
 
 
 #
@@ -182,13 +174,14 @@ def checkcollision(packet):
 
     if packetsAtBS:
         if (verbose >= 3):
-            print("[DEBUG] - CHECK node {} (sf:{} bw:{} freq:{:.6e}) others: {}".format(packet.nodeid, packet.sf, packet.bw,
-                                                                                    packet.freq, len(packetsAtBS)))
+            print("[DEBUG] - CHECK node {} (sf:{} bw:{} freq:{:.6e}) others: {}".format(packet.nodeid, packet.sf,
+                                                                                        packet.bw,
+                                                                                        packet.freq, len(packetsAtBS)))
         for other in packetsAtBS:
             if other.nodeid != packet.nodeid:
                 if (verbose >= 3):
                     print("[DEBUG] - >> node {} (sf:{} bw:{} freq:{:.6e})".format(other.nodeid, other.packet.sf,
-                                                                              other.packet.bw, other.packet.freq))
+                                                                                  other.packet.bw, other.packet.freq))
                 # simple collision
                 if frequencyCollision(packet, other.packet) and sfCollision(packet, other.packet):
                     if full_collision:
@@ -249,9 +242,6 @@ def sfCollision(p1, p2):
     return False
 
 
-
-
-
 def powerCollision(p1, p2):
     powerThreshold = 6  # dB
     if (verbose >= 3):
@@ -291,9 +281,10 @@ def timingCollision(p1, p2):
     p1_cs = env.now + Tpreamb
     if (verbose >= 3):
         print("[DEBUG] -  collision timing node {} ({},{},{}) node {} ({},{})".format(p1.nodeid, env.now - env.now,
-                                                                                 p1_cs - env.now, p1.rectime, p2.nodeid,
-                                                                                 p2.addTime - env.now,
-                                                                                 p2_end - env.now))
+                                                                                      p1_cs - env.now, p1.rectime,
+                                                                                      p2.nodeid,
+                                                                                      p2.addTime - env.now,
+                                                                                      p2_end - env.now))
     if p1_cs < p2_end:
         # p1 collided with p2 and lost
         if (verbose >= 3):
@@ -340,7 +331,7 @@ class myNode():
         self.bs = bs
         self.x = 0
         self.y = 0
-
+        self.Q_matrix = np.zeros((6, 3))  # Matrice Q de taille 6x3 (6 DRs, 3 colonnes pour F1, F2, F3)
         # this is very complex prodecure for placing nodes
         # and ensure minimum distance between each pair of nodes
         found = 0
@@ -384,17 +375,19 @@ class myNode():
         if (verbose >= 3):
             print('[DEBUG] -  node %d' % nodeid, "x", self.x, "y", self.y, "dist: ", self.dist)
         if sim_scenario == 0:
-            self.packet = myPacket(self.nodeid, packetlen, self.dist,'unconfirmed')
+            self.packet = myPacket(self.nodeid, packetlen, self.dist, 'unconfirmed')
         elif sim_scenario == 1:
-            self.packet = myPacket(self.nodeid, packetlen, self.dist,'confirmed')
+            self.packet = myPacket(self.nodeid, packetlen, self.dist, 'confirmed')
         elif sim_scenario == 2:
-            self.packet = myPacket(self.nodeid, packetlen, self.dist,'confirmed')
+            self.packet = myPacket(self.nodeid, packetlen, self.dist, 'confirmed')
         self.sent = 0
         # number of DL ACK received by the node
         # This is required for confirmed frame only
         self.ack_received = 0
+        self.reward = 0
         # This is required for confirmed frame which are in collison
         self.nack_received = 0
+        self.nreward = 0
 
         # Node frequency usage. Incremented each time a packet is sent using one of these frequency channels
         # freq_usage[0] = 860000000,
@@ -446,7 +439,6 @@ class myPacket():
             self.cr = 1
             self.bw = 500
         # lorawan
-
         if experiment == 4:
             self.sf = 12
             self.cr = 1
@@ -458,8 +450,8 @@ class myPacket():
             # ToDO: Exploitation phase
             # Chose DR according to Q matrice
 
-            self.sf = LORAWAN_DR[DR,1]
-            self.bw = LORAWAN_DR[DR,2]
+            self.sf = LORAWAN_DR[DR, 1]
+            self.bw = LORAWAN_DR[DR, 2]
             self.cr = 1
 
         # for experiment 3 find the best setting
@@ -532,6 +524,7 @@ class myPacket():
             self.freq = random.choice([860000000, 864000000, 868000000])
             # ToDo : Exploitation phase
             # Chose the frequency according to the Q learning matrice
+
         else:
             self.freq = 860000000
 
@@ -575,7 +568,8 @@ def transmit(env, node):
             # Pure Aloha protocol
             nextTxInstant = random.expovariate(1.0 / float(node.period))
             if verbose >= 3:
-                print('[DEBUG] - ' + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> transmission is scheduled at ', env.now + nextTxInstant)
+                print('[DEBUG] - ' + str(env.now) + ' --- Node ' + str(
+                    node.nodeid) + ' --> transmission is scheduled at ', env.now + nextTxInstant)
 
             yield env.timeout(nextTxInstant)
         elif mac_protocol == 1:
@@ -605,30 +599,6 @@ def transmit(env, node):
         # packet arrives -> add to base station
 
         node.sent = node.sent + 1
-
-        # Attendre avant d'envoyer le prochain paquet
-        yield env.timeout(random.expovariate(1.0 / float(node.period)))
-
-    # Fonction de récompense pour chaque nœud
-def reward(node, packet):
-        if packet is not None:
-            # Si le paquet a été reçu correctement, donner une récompense positive
-            node.reinforce(1)
-        else:
-            # Si le paquet n'a pas été reçu correctement, donner une récompense négative
-            node.reinforce(-1)
-
-        # Mettre en place les fonctions de transmission et de récompense pour chaque nœud
-
-        for node in nodes:
-            env.process(transmit(node, packet))
-            node.on_receive(reward)
-            # Exécuter la simulation
-            env.run(until=1000)
-        # Afficher le resutat
-        for node in nodes:
-            print(f'Node {node.nodeid} sent {node.packet_count} packets, with {node.collision_count} collisions')
-
         if verbose >= 3:
             print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> tx_done, packet is sent')
 
@@ -690,154 +660,24 @@ def reward(node, packet):
                 print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
                     node.nodeid) + '--> packet successfully received by BS')
 
-
         # Check if an ack frame is needed
         if node.packet.MType == 'confirmed' and node.packet.collided == 0 and not node.packet.lost:
             node.ack_received += 1
+            node.reward += 1
+
+
         else:
             node.nack_received += 1
+            node.nreward += 1
+
             if verbose >= 3:
-              print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
-                node.nodeid) + '--> ACK successfully received by Node')
+                print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(
+                    node.nodeid) + '--> ACK successfully received by Node')
 
         # reset the packet
         node.packet.collided = 0
         node.packet.processed = 0
         node.packet.lost = False
-
-
-#code in sert
-
-import gym
-import numpy as np
-import matplotlib.pyplot as plt
-import numpy as np
-
-# Définir les états et actions possibles
-STATES = [0, 1, 2, 3] # États possibles : 0 = idle, 1 = tx_busy, 2 = rx_busy, 3 = collision
-ACTIONS = [0, 1] # Actions possibles : 0 = pas de transmission, 1 = transmission
-
-# Initialisation de la matrice Q avec des valeurs aléatoires
-Q = np.random.rand(len(STATES), len(ACTIONS))
-
-# Définition des paramètres d'apprentissage
-LEARNING_RATE = 0.8
-DISCOUNT_FACTOR = 0.95
-NUM_EPISODES = 1000
-
-
-class LoRAEnv(gym.Env):
-    def __init__(self):
-        self.action_space = gym.spaces.Discrete(2) # 2 actions possibles : 0 = pas de transmission, 1 = transmission
-        self.observation_space = gym.spaces.Discrete(4) # 4 états possibles : 0 = idle, 1 = tx_busy, 2 = rx_busy, 3 = collision
-        self.Q = np.random.rand(4, 2) # Initialisation de la matrice Q avec des valeurs aléatoires
-        self.LEARNING_RATE = 0.8 # Définition des paramètres d'apprentissage
-        self.DISCOUNT_FACTOR = 0.95
-        self.NUM_EPISODES = 1000
-        self.rewards = []
-
-    def step(self, action):
-        if action == 0:
-            # Pas de transmission
-            if self.state == 1:
-                new_state = 0
-                reward = -10 # Collision
-            elif self.state == 2:
-                new_state = 0
-                reward = 1 # Pas de collision
-            else:
-                new_state = self.state
-                reward = 0
-        else:
-            # Transmission
-            if self.state == 0:
-                new_state = 1
-                reward = 1 # Pas de collision
-            elif self.state == 1:
-                new_state = 1
-                reward = -1 # Transmission en cours
-            elif self.state == 2:
-                new_state = 3
-                reward = -10 # Collision
-            else:
-                new_state = 3
-                reward = -10 # Collision
-        # Mettre à jour la matrice Q avec la formule de Q-Learning
-        self.Q[self.state, action] = self.Q[self.state, action] + self.LEARNING_RATE * (reward + self.DISCOUNT_FACTOR * np.max(self.Q[new_state]) - self.Q[self.state, action])
-        self.episode_reward += reward
-        self.state = new_state
-        done = False
-        if self.episode_reward <= -50:
-            done = True
-        return self.state, reward, done, {}
-
-    def reset(self):
-        self.state = 0 # Début de l'épisode : état initial est idle
-        self.epsilon = 0.5 # Epsilon initial pour la politique epsilon-greedy
-        self.episode_reward = 0 # Initialisation de la récompense de l'épisode
-        return self.state
-
-    def run_episodes(self):
-        for episode in range(self.NUM_EPISODES):
-            self.reset()
-            for t in range(100):
-                action = self.choose_action()
-                _, reward, done, _ = self.step(action)
-                if done:
-                    break
-            self.rewards.append(self.episode_reward)
-            # Diminution de l'epsilon avec le temps pour privilégier l'exploitation
-            self.epsilon /= (episode + 1)
-
-# Définition de la fonction pour choisir l'action en fonction de l'état actuel (epsilon-greedy)
-def choose_action(state, epsilon):
-    if np.random.uniform(0, 1) < epsilon:
-        # Exploration : choisir une action aléatoire
-        action = np.random.choice(ACTIONS)
-    else:
-        # Exploitation : choisir l'action ayant la plus grande valeur Q
-        action = np.argmax(Q[state])
-    return action
-
-# Boucle d'apprentissage
-rewards = []
-for episode in range(NUM_EPISODES):
-    state = 0 # Début de l'épisode : état initial est idle
-    epsilon = 0.5 / (episode + 1) # Diminution de l'epsilon avec le temps pour privilégier l'exploitation
-    episode_reward = 0 # Initialisation de la récompense de l'épisode
-    for t in range(100):
-        action = choose_action(state, epsilon)
-        # Appliquer l'action et observer le nouvel état et la récompense
-        if action == 0:
-            # Pas de transmission
-            if state == 1:
-                new_state = 0
-                reward = -10 # Collision
-            elif state == 2:
-                new_state = 0
-                reward = 1 # Pas de collision
-            else:
-                new_state = state
-                reward = 0
-        else:
-            # Transmission
-            if state == 0:
-                new_state = 1
-                reward = 1 # Pas de collision
-            elif state == 1:
-                new_state = 1
-                reward = -1 # Transmission en cours
-            elif state == 2:
-                new_state = 3
-                reward = -10 # Collision
-            else:
-                new_state = 3
-                reward = -10 # Collision
-        # Mettre à jour la matrice Q avec la formule de Q-Learning
-        Q[state, action] = Q[state, action] + LEARNING_RATE * (reward + DISCOUNT_FACTOR * np.max(Q[new_state]) - Q[state, action])
-        episode_reward += reward
-        state = new_state
-    rewards.append(episode_reward)
 
 
 #
@@ -852,7 +692,8 @@ if len(sys.argv) >= 5:
     simtime = int(sys.argv[4])
 
     if len(sys.argv) >= 6:
-        sim_scenario = int(sys.argv[5])
+        sim_scenario = \
+            int(sys.argv[5])
 
     # Create sim results directory
     if len(sys.argv) >= 7:
@@ -868,7 +709,6 @@ if len(sys.argv) >= 5:
                 print('[ERROR] - Directory already exist')
         else:
             print("[INFO] - Successfully created the directory %s " % sim_results_path)
-
 
     # instant de transmission et durée d'un slot pour le Aloha sloté
     if (mac_protocol == 1):
@@ -891,7 +731,7 @@ else:
     print("usage: ./loraDir <nodes> <avgsend> <experi"
           "ment> <simtime> <sim_scenario> [collision]")
     print("experiment 0 and 1 use 1 frequency only")
-    #exit(-1)
+    exit(-1)
 
 # global stuff
 # Rnd = random.seed(12345)
@@ -925,8 +765,7 @@ elif experiment == 2:
 elif experiment in [3, 5]:
     minsensi = np.amin(sensi)  ## Experiment 3 can use any setting, so take minimum
 elif experiment == 6:
-    minsensi = np.amin(sensi[:,1:2])
-
+    minsensi = np.amin(sensi[:, 1:2])
 
 print("experiment = ", minsensi)
 Lpl = Ptx - minsensi
@@ -962,6 +801,10 @@ for i in range(0, nrNodes):
     # myNode takes period (in ms), base station id packetlen (in Bytes)
     # 1000000 = 16 min
     node = myNode(i, bsId, avgSendTime, 20)
+    print()
+    print("matrice Q du noeud", i, "est", node.Q_matrix)  # Chaque noeud a sa matrice Q
+    print("récompense du noeud", i, "est", node.reward)
+    print("sanction du noeud", i, "est", node.nreward)
     nodes.append(node)
     env.process(transmit(env, node))
 
@@ -971,8 +814,6 @@ if (graphics == 1):
     plt.ylim([0, ymax])
     plt.draw()
     plt.show()
-#import gym
-
 
 # start simulation
 env.run(until=simtime)
@@ -989,42 +830,46 @@ TX = [22, 22, 22, 23,  # RFO/PA0: -2..1
       105, 115, 125]  # PA_BOOST/PA1+PA2: 18..20
 # mA = 90    # current draw for TX = 17 dBm
 
-V = 3.0     # voltage XXX
+V = 3.0  # voltage XXX
 if (sim_scenario == 0):
- Iidle = 1.5 #according to the datasheet this is the supply current in the idle mode in mA
- idletime = 2000 # time in idle mode in ms
- Istb = 1.6 #according to the datasheet this is the supply current in standby mode in mA
- Isleep = 0.0002 #according to the datasheet this is the supply current in sleep mode in mA
- Nstb= 2 # number of stanby mode, nodes go two time in standby mode
- sent = sum(n.sent for n in nodes)
- energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow)+2] * V * node.sent for node in nodes)
- energy_idle = sum(idletime* Iidle * V * node.sent for node in nodes)
- energy_stb = sum(Tpream * Nstb *Istb * V * node.sent for node in nodes)
- energy_sleep = sum((avgSendTime- node.packet.rectime-idletime-Nstb*Tpream)*Isleep*V * node.sent for node in nodes)
- energy1 = energy_TxUL/1e6
- energyT = (energy_TxUL + energy_idle + energy_stb + energy_sleep)/1e6
+    Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
+    idletime = 2000  # time in idle mode in ms
+    Istb = 1.6  # according to the datasheet this is the supply current in standby mode in mA
+    Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
+    Nstb = 2  # number of stanby mode, nodes go two time in standby mode
+    sent = sum(n.sent for n in nodes)
+    energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
+    energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
+    energy_stb = sum(Tpream * Nstb * Istb * V * node.sent for node in nodes)
+    energy_sleep = sum(
+        (avgSendTime - node.packet.rectime - idletime - Nstb * Tpream) * Isleep * V * node.sent for node in nodes)
+    energy1 = energy_TxUL / 1e6
+    energyT = (energy_TxUL + energy_idle + energy_stb + energy_sleep) / 1e6
 elif (sim_scenario == 1):
-   Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
-   idletime1 = 1000  # time in idle mode in ms
-   idletime2 = 2000  # time in idle mode in ms
-   Istb = 1.6  # according to the datasheet this is the supply current in standby mode in mA
-   Ir = 11.5  # according to the datasheet this is the supply current in receive mode, LnaBoost ON,band 1 in mA
-   Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
-   Nstb = 2  # number of stanby mode, nodes go two time in standby mode
-   Tr = airtime(12,4,13,125)
-   sent = sum(n.sent for n in nodes)
-   ack_received = sum(n.ack_received for n in nodes)
-   energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
-   energy_idle1 = sum(idletime1 * Iidle * V * node.ack_received for node in nodes)
-   energy_idle2 = sum(idletime2 * Iidle * V * node.nack_received for node in nodes)
-   energy_Rx1DL = sum(Tr* Ir * V * node.ack_received for node in nodes)
-   energy_stb = sum(Tpream * Nstb * Istb * V * node.nack_received for node in nodes)
-   energy_sleep1 = sum((avgSendTime - node.packet.rectime - idletime1 - Tr) * Isleep * V * node.ack_received for node in nodes)
-   energy_sleep2 = sum((avgSendTime - node.packet.rectime - idletime2 - Nstb * Tpream) * Isleep * V * node.nack_received for node in nodes)
-   energy1 = energy_TxUL / 1e6
-   energy2 = (energy_idle1 + energy_Rx1DL + energy_sleep1 ) / 1e6
-   energy3 = (energy_idle2 + energy_sleep2 + energy_stb) / 1e6
-   energyT = energy1 + energy2 + energy3
+    Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
+    idletime1 = 1000  # time in idle mode in ms
+    idletime2 = 2000  # time in idle mode in ms
+    Istb = 1.6  # according to the datasheet this is the supply current in standby mode in mA
+    Ir = 11.5  # according to the datasheet this is the supply current in receive mode, LnaBoost ON,band 1 in mA
+    Isleep = 0.0002  # according to the datasheet this is the supply current in sleep mode in mA
+    Nstb = 2  # number of stanby mode, nodes go two time in standby mode
+    Tr = airtime(12, 4, 13, 125)
+    sent = sum(n.sent for n in nodes)
+    ack_received = sum(n.ack_received for n in nodes)
+    energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
+    energy_idle1 = sum(idletime1 * Iidle * V * node.ack_received for node in nodes)
+    energy_idle2 = sum(idletime2 * Iidle * V * node.nack_received for node in nodes)
+    energy_Rx1DL = sum(Tr * Ir * V * node.ack_received for node in nodes)
+    energy_stb = sum(Tpream * Nstb * Istb * V * node.nack_received for node in nodes)
+    energy_sleep1 = sum(
+        (avgSendTime - node.packet.rectime - idletime1 - Tr) * Isleep * V * node.ack_received for node in nodes)
+    energy_sleep2 = sum(
+        (avgSendTime - node.packet.rectime - idletime2 - Nstb * Tpream) * Isleep * V * node.nack_received for node in
+        nodes)
+    energy1 = energy_TxUL / 1e6
+    energy2 = (energy_idle1 + energy_Rx1DL + energy_sleep1) / 1e6
+    energy3 = (energy_idle2 + energy_sleep2 + energy_stb) / 1e6
+    energyT = energy1 + energy2 + energy3
 elif (sim_scenario == 2):
     Iidle = 1.5  # according to the datasheet this is the supply current in the idle mode in mA
     idletime = 2000  # time in idle mode in ms
@@ -1037,35 +882,30 @@ elif (sim_scenario == 2):
     sent = sum(n.sent for n in nodes)
     ack_received = sum(n.ack_received for n in nodes)
     energy_TxUL = sum(node.packet.rectime * TX[int(node.packet.txpow) + 2] * V * node.sent for node in nodes)
-    energy_idle1 = sum(idletime * Iidle * V *node.ack_received for node in nodes )
+    energy_idle1 = sum(idletime * Iidle * V * node.ack_received for node in nodes)
     energy_idle2 = sum(idletime * Iidle * V * node.nack_received for node in nodes)
     energy_Rx2DL = sum(Tr * Ir * V * node.ack_received for node in nodes)
     energy_stb1 = sum(Tpream * Nstb1 * Istb * V * node.ack_received for node in nodes)
     energy_stb2 = sum(Tpream * Nstb2 * Istb * V * node.nack_received for node in nodes)
-    energy_sleep1 = sum((avgSendTime - node.packet.rectime - Nstb1 * Tpream - idletime - Tr) * Isleep * V * node.ack_received for node in nodes )
-    energy_sleep2 = sum((avgSendTime - node.packet.rectime - idletime - Nstb2 * Tpream) * Isleep * V * node.nack_received for node in nodes)
+    energy_sleep1 = sum(
+        (avgSendTime - node.packet.rectime - Nstb1 * Tpream - idletime - Tr) * Isleep * V * node.ack_received for node
+        in nodes)
+    energy_sleep2 = sum(
+        (avgSendTime - node.packet.rectime - idletime - Nstb2 * Tpream) * Isleep * V * node.nack_received for node in
+        nodes)
     energy1 = energy_TxUL / 1e6
     energy2 = (energy_idle1 + energy_Rx2DL + energy_sleep1 + energy_stb1) / 1e6
     energy3 = (energy_idle2 + energy_sleep2 + energy_stb2) / 1e6
     energyT = energy1 + energy2 + energy3
-if (verbose>=1):
-    print ("[INFO] - energy (in J) in tx only: ", energy1)
-    print ("[INFO] -  total energy (in J): ", energyT)
-    print ("[INFO] - sent packets: ", sent)
-    print ("[INFO] - collisions: ", nrCollisions)
-    print ("[INFO] - received packets: ", nrReceived)
-    print ("[INFO] - processed packets: ", nrProcessed)
-    print ("[INFO] - lost packets: ", nrLost)
-    print ("[INFO] - Tpream: ", Tpream)
-    # Afficher la matrice Q
-    print(Q)
-
-    # Afficher les récompenses moyennes par épisode
-    print("Récompense moyenne par épisode : " + str(sum(rewards) / NUM_EPISODES))
-    print("Somme des épisodes pour les recompenses : " + str(sum(rewards)))
-    print("Les récompenses:" + str(rewards))
-    # Tracer le graphe des récompenses
-
+if (verbose >= 1):
+    print("[INFO] - energy (in J) in tx only: ", energy1)
+    print("[INFO] -  total energy (in J): ", energyT)
+    print("[INFO] - sent packets: ", sent)
+    print("[INFO] - collisions: ", nrCollisions)
+    print("[INFO] - received packets: ", nrReceived)
+    print("[INFO] - processed packets: ", nrProcessed)
+    print("[INFO] - lost packets: ", nrLost)
+    print("[INFO] - Tpream: ", Tpream)
 
 # data extraction rate
 der1 = (sent - nrCollisions) / float(sent)
@@ -1083,9 +923,8 @@ if (graphics == 1):
 # name of file would be:  exp0.dat for experiment 0
 
 
-
-
-fname = sim_results_path +"/sim_results_exp" + str(experiment) + "_mac" + str(mac_protocol) + "_scenario"+ str(sim_scenario) + ".dat"
+fname = sim_results_path + "/sim_results_exp" + str(experiment) + "_mac" + str(mac_protocol) + "_scenario" + str(
+    sim_scenario) + ".dat"
 
 if (verbose >= 1):
     print(fname)
