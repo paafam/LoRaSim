@@ -203,7 +203,9 @@ def checkcollision(packet):
                         packet.collided = 1
                         other.packet.collided = 1  # other also got lost, if it wasn't lost already
                         col = 1
+
         return col
+
     return 0
 
 
@@ -333,6 +335,8 @@ class myNode():
         self.bs = bs
         self.x = 0
         self.y = 0
+        #MP = myPacket (self.nodeid, packetlen,'confirmed')
+        #self.sf = MP.sf
         self.Q_matrix = np.zeros((6, 3))  # Matrice Q de taille 6x3 (6 DRs, 3 colonnes pour F1, F2, F3)
         # this is very complex prodecure for placing nodes
         # and ensure minimum distance between each pair of nodes
@@ -448,7 +452,10 @@ class myPacket():
 
         if experiment == 6:
             # Exploration phase
-            DR = random.randint(0, 6)
+            DR = random.randint(0, 5)
+            FR = random.randint(0, 2)          # TEST
+            self.dr = DR
+            self.freq = FR                    # TEST
             # ToDO: Exploitation phase
             # Chose DR according to Q matrice
 
@@ -523,7 +530,8 @@ class myPacket():
             self.freq = random.choice([860000000, 864000000, 868000000])
         elif experiment == 6:
             # Exploration phase
-            self.freq = random.choice([860000000, 864000000, 868000000])
+            #self.freq = random.choice([860000000, 864000000, 868000000])
+            self.freq = random.choice( [0,1,2])      # TEST
             # ToDo : Exploitation phase
             # Chose the frequency according to the Q learning matrice
 
@@ -539,7 +547,21 @@ class myPacket():
         # denote if packet is collided
         self.collided = 0
         self.processed = 0
-
+    def update_freq_channel(self):
+        print("-----DEBUT FONCTION UPDATE ------")
+        # for certain experiments override these and
+        # choose some random frequencies
+        if experiment == 1:
+            self.freq = random.choice([860000000, 864000000, 868000000])
+        elif experiment == 6:
+            # Exploration phase
+            self.freq = random.choice([0, 1, 2])
+            #self.freq = random.choice([860000000, 864000000, 868000000])
+            # ToDo : Exploitation phase
+            # Chose the frequency according to the Q learning matrice
+        else:
+            self.freq = 860000000
+        print("-----FIN FONCTION UPDATE ------")
 
 #
 # main discrete event loop, runs for each node
@@ -569,6 +591,7 @@ def transmit(env, node):
         if mac_protocol == 0:
             # Pure Aloha protocol
             nextTxInstant = random.expovariate(1.0 / float(node.period))
+            node.packet.freq == node.packet.update_freq_channel()
             if verbose >= 3:
                 print('[DEBUG] - ' + str(env.now) + ' --- Node ' + str(
                     node.nodeid) + ' --> transmission is scheduled at ', env.now + nextTxInstant)
@@ -593,6 +616,7 @@ def transmit(env, node):
             # Default MAC protocol : Pure Aloha
             # Pure Aloha protocol
             nextTxInstant = random.expovariate(1.0 / float(node.period))
+            node.packet.freq == node.packet.update_freq_channel()
             if (verbose >= 1):
                 print("INFO: transmission is scheduled at ", env.now + nextTxInstant)
             yield env.timeout(nextTxInstant)
@@ -665,11 +689,13 @@ def transmit(env, node):
         # Check if an ack frame is needed
         if node.packet.MType == 'confirmed' and node.packet.collided == 0 and not node.packet.lost:
             node.ack_received += 1
+            node.Q_matrix[node.packet.dr][node.packet.freq] +=1
             node.reward += 1
 
 
         else:
             node.nack_received += 1
+            node.Q_matrix[node.packet.dr][node.packet.freq] -=1
             node.nreward += 1
 
             if verbose >= 3:
@@ -806,6 +832,7 @@ for i in range(0, nrNodes):
     print("matrice Q du noeud", i, "est", node.Q_matrix)  # Chaque noeud a sa matrice Q
     print("récompense du noeud", i, "est", node.reward)
     print("sanction du noeud", i, "est", node.nreward)
+    # print("le SF du noeud", i, "est", node.sf)
     nodes.append(node)
     env.process(transmit(env, node))
 
