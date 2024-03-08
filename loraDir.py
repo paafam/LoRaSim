@@ -146,7 +146,7 @@ sim_scenario = 0	# This is the default value
 mac_protocol = 0
 
 # Load nodes location from file
-loadNodesLocation = 1
+loadNodesLocation = 0
 
 # turn on/off graphics
 graphics = 1
@@ -576,9 +576,27 @@ class myPacket():
         self.collided = 0
         self.processed = 0
 
+    def update_freq_channel(self):
+        print("-----DEBUT FONCTION UPDATE ------")
+        # for certain experiments override these and
+        # choose some random frequencies
+        if experiment == 1:
+            self.freq = random.choice([868100000, 868300000, 868500000])
+        elif experiment == 6:
+            # Exploration phase
+            self.freq = random.choice([0, 1, 2])
+            #self.freq = random.choice([860000000, 864000000, 868000000])
+            # ToDo : Exploitation phase
+            # Chose the frequency according to the Q learning matrice
+        else:
+            self.freq = 868100000
+        print("-----FIN FONCTION UPDATE ------")
+        return self.freq
+
 
 # This function handle radio channel access according to MAC protocol selection
 def get_channel_access_instant(node, mac_protocol):
+    node.ul_packet.freq = node.ul_packet.update_freq_channel()
     nextTxInstant = 0
     if mac_protocol == 0:
         # Pure Aloha protocol
@@ -635,12 +653,12 @@ def transmit(env, node):
             # Default is Class A
             if verbose >= 3:
                 print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + ' --> Class_A')
-                print("[DEBUG] - ( " + str(env.now)+ " ) - Node("+ str(node.nodeid) + ') --> tx_starting at ' + str(env.now))
+                print("[DEBUG] - " + str(env.now) + " --- Node " + str(node.nodeid) + ' --> tx_starting at ' + str(env.now))
 
             # Step 1 : Choose an arbitrary instant to transmit according to  MAC protocol
             nextTxInstant = get_channel_access_instant(node,mac_protocol)
             if verbose >= 3:
-                print("[DEBUG] - ( " + str(env.now)+ " ) - Node("+ str(node.nodeid) + ') --> transmission is scheduled at ', env.now + nextTxInstant)
+                print("[DEBUG] - " + str(env.now) + " --- Node " + str(node.nodeid) + ' --> transmission is scheduled at ', env.now + nextTxInstant)
             # wait until that instant, then send the packet
             node.Sleep_time += (env.now + nextTxInstant) - node.goto_sleep_instant
             yield env.timeout(nextTxInstant)
@@ -652,7 +670,7 @@ def transmit(env, node):
             # Step 2 : send packet
             node.sent = node.sent + 1
             if verbose >= 3:
-                print("[DEBUG] - ( " + str(env.now)+ " ) - Node("+ str(node.nodeid) + ') --> Tx_done, Packet is sent')
+                print("[DEBUG] - " + str(env.now) + " --- Node " + str(node.nodeid) + ' --> Tx_done, Packet is sent')
 
             # save frequency channels usage freq: 860000000, 864000000, 868000000
             if node.ul_packet.freq == 868100000:
