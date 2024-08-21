@@ -4,3 +4,6 @@
 figures/
 .venv/
 .venv1/
+venv/
+launch.json
+.vscode/

@@ -73,6 +73,7 @@ import math
 import sys
 import matplotlib.pyplot as plt
 import os
+import contextlib
 from datetime import datetime
 
 # Verbose:
@@ -100,6 +101,7 @@ now = datetime.now()
 path = os.getcwd()
 if verbose >=1:
     print ("[INFO] - current working directory is %s " % path)
+
 # Create data directory
 data_path   = path + "/data"
 try:
@@ -114,6 +116,19 @@ else:
     if verbose >= 1:
         print ("[INFO] - Successfully created the directory %s " % data_path)
 
+# Create trace directory
+trace_path = path+"/trace"
+try:
+    os.mkdir(trace_path)
+except OSError:
+    if verbose >=2:
+        print ("[ERROR] - Creation of the directory %s failed" % trace_path)
+    if os.path.isdir(trace_path):
+        if verbose >= 2:
+            print('[ERROR] - Directory already exist')
+else:
+    if verbose >= 1:
+        print ("[INFO] - Successfully created the directory %s " % trace_path)
 
 # Create results directory
 results_path = path + "/results"
@@ -132,7 +147,7 @@ else:
 # Create sim directory in results directory
 dt_string = now.strftime("%Y%m%d-%H%M%S")
 sim_results_path = results_path + "/sim_"+dt_string
-
+trace_file = trace_path + "/sim_"+dt_string+".txt"
 # Simulation scenario
 # 0 : all frame are unconfirmed frame (default value)
 # 1 : all frame are confirmed frame, a 13 bytes ACK frame is sent on the first RX1 window
@@ -146,7 +161,7 @@ sim_scenario = 0	# This is the default value
 mac_protocol = 0
 
 # Load nodes location from file
-loadNodesLocation = 0
+loadNodesLocation = 1
 
 # turn on/off graphics
 graphics = 1
@@ -162,6 +177,7 @@ full_collision = False
 
 # Store frequency channels usage for freq: 868100000, 868300000, 868500000
 global_freq_usage = [0, 0, 0]
+freq_list = [868100000, 868300000, 868500000]
 
 # this is an array with measured values for sensitivity
 # see paper, Table 3
@@ -357,7 +373,7 @@ class myNode():
 
         # This refers to the packet size of an ACK frame (i.e. without app payload)
         dl_packetlen = 13
-
+        self.Q_matrix = np.zeros((6, 3))  # Matrice Q de taille 6x3 (6 DRs, 3 colonnes pour F1, F2, F3)
         # this is very complex prodecure for placing nodes
         # and ensure minimum distance between each pair of nodes
         found = 0
@@ -368,8 +384,14 @@ class myNode():
         global TX
 
         if loadNodesLocation:
-            self.x = nodesPosition[nodeid][0]
-            self.y = nodesPosition[nodeid][1]
+            try:
+                self.x = nodesPosition[self.nodeid][0]
+                self.y = nodesPosition[self.nodeid][1]
+            except IndexError:
+                print("Index is out of range")
+                self.x = nodesPosition[0]
+                self.y = nodesPosition[1]
+            
         else:
             while (found == 0 and rounds < 100):
                 a = random.random()
@@ -412,6 +434,13 @@ class myNode():
             self.dl_packet = myPacket(self.nodeid, dl_packetlen, self.dist, 'confirmed')
 
         self.sent = 0
+        # number of DL ACK received by the node
+        # This is required for confirmed frame only
+        self.ack_received = 0
+        self.reward = 0
+        # This is required for confirmed frame which are in collison
+        self.nack_received = 0
+        self.nreward = 0
 
         # number of DL ACK received by the node
         # This is required for confirmed frame only
@@ -425,7 +454,7 @@ class myNode():
         self.freq_usage_ack_received = [0, 0, 0]
 
         # Energy consumption
-        self.Voltage = 3.0  # node voltage
+        self.Voltage = 3.0  # node voltage V
         self.Tx_time = 0  # time unit is in ms
         self.Rx_time = 0
         self.Idle_time = 0.0
@@ -472,6 +501,8 @@ class myPacket():
         self.sf = random.randint(6, 12)
         self.cr = random.randint(1, 4)
         self.bw = random.choice([125, 250, 500])
+        self.dr = 0
+        self.freq = 0
 
         # for certain experiments override these
         if experiment == 1 or experiment == 0:
@@ -491,7 +522,12 @@ class myPacket():
             self.bw = 125
         if experiment == 6:
             # Exploration phase
-            DR = random.randint(0, 6)
+            #DR = random.randint(0, 6)
+            DR = random.randint(0, 5)
+            #DR=5
+            FR = random.randint(0, 2)          # TEST
+            self.dr = DR
+            self.freq = FR                    # TEST
             # ToDO: Exploitation phase
             # Chose DR according to Q matrice
             self.sf = LORAWAN_DR[DR,1]
@@ -563,6 +599,12 @@ class myPacket():
         # choose some random frequencies
         if experiment == 1:
             self.freq = random.choice([868100000, 868300000, 868500000])
+        elif experiment == 6:
+            # Exploration phase
+            #self.freq = random.choice([860000000, 864000000, 868000000])
+            self.freq = random.choice( [868100000, 868300000, 868500000])      # TEST
+            # ToDo : Exploitation phase
+            # Chose the frequency according to the Q learning matrice
         else:
             self.freq = 868100000
 
@@ -577,20 +619,22 @@ class myPacket():
         self.processed = 0
 
     def update_freq_channel(self):
-        print("-----DEBUT FONCTION UPDATE ------")
+        if verbose >=3:
+            print("-----DEBUT FONCTION UPDATE ------")
         # for certain experiments override these and
         # choose some random frequencies
         if experiment == 1:
             self.freq = random.choice([868100000, 868300000, 868500000])
         elif experiment == 6:
             # Exploration phase
-            self.freq = random.choice([0, 1, 2])
+            self.freq = random.choice([868100000, 868300000, 868500000])
             #self.freq = random.choice([860000000, 864000000, 868000000])
             # ToDo : Exploitation phase
             # Chose the frequency according to the Q learning matrice
         else:
             self.freq = 868100000
-        print("-----FIN FONCTION UPDATE ------")
+        if verbose >=3:
+            print("-----FIN FONCTION UPDATE ------")
         return self.freq
 
 
@@ -661,6 +705,7 @@ def transmit(env, node):
                 print("[DEBUG] - " + str(env.now) + " --- Node " + str(node.nodeid) + ' --> transmission is scheduled at ', env.now + nextTxInstant)
             # wait until that instant, then send the packet
             node.Sleep_time += (env.now + nextTxInstant) - node.goto_sleep_instant
+            add_trace(env.now,str(node.nodeid)+"-T")
             yield env.timeout(nextTxInstant)
 
 
@@ -669,6 +714,7 @@ def transmit(env, node):
 
             # Step 2 : send packet
             node.sent = node.sent + 1
+            add_trace(env.now,str(node.nodeid)+"-S")
             if verbose >= 3:
                 print("[DEBUG] - " + str(env.now) + " --- Node " + str(node.nodeid) + ' --> Tx_done, Packet is sent')
 
@@ -694,13 +740,16 @@ def transmit(env, node):
                     if verbose >= 1:
                         print("[INFO] - node {}: packet will be lost").format(node.nodeid)
                     node.ul_packet.lost = True
+                    add_trace(env.now,str(node.nodeid)+"-L")
                 else:
                     node.ul_packet.lost = False
                     # adding packet if no collision
                     if checkcollision(node.ul_packet) == 1:
                         node.ul_packet.collided = 1
+                        add_trace(env.now,str(node.nodeid)+"-C")
                     else:
                         node.ul_packet.collided = 0
+                        add_trace(env.now,str(node.nodeid)+"-R")
                     packetsAtBS.append(node)
                     node.ul_packet.addTime = env.now
                     if verbose >= 3:
@@ -712,12 +761,15 @@ def transmit(env, node):
             if node.ul_packet.lost:
                 global nrLost
                 nrLost += 1
+                add_trace(env.now,str(node.nodeid)+"-L")
             if node.ul_packet.collided == 1:
                 global nrCollisions
                 nrCollisions = nrCollisions + 1
+                add_trace(env.now,str(node.nodeid)+"-C")
             if node.ul_packet.collided == 0 and not node.ul_packet.lost:
                 global nrReceived
                 nrReceived = nrReceived + 1
+                add_trace(env.now,str(node.nodeid)+"-R")
             if node.ul_packet.processed == 1:
                 global nrProcessed
                 nrProcessed = \
@@ -744,6 +796,8 @@ def transmit(env, node):
                 if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
                     # Packet is successfully received by BS, ACK packet can now be sent
                     node.ack_received += 1
+                    node.Q_matrix[node.packet.dr][freq_list.index(node.ul_packet.freq)] +=1
+                    node.reward += 1
                     # Wait for packet to be received
                     node.Rx_time += node.dl_packet.rectime
                     yield env.timeout(node.dl_packet.rectime)
@@ -752,6 +806,9 @@ def transmit(env, node):
                         print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> ACK successfully received by Node')
                 else :
                     # Packet is not successfully received by BS, but RX2 window should be opened
+                    node.nack_received += 1
+                    node.Q_matrix[node.packet.dr][node.packet.freq] -=1
+                    node.nreward += 1
                     node.Stdby_time += Tpream
                     yield env.timeout(Tpream)
                     node.Idle_time += RX2_DELAY - RX1_DELAY
@@ -771,6 +828,8 @@ def transmit(env, node):
                     print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> Opening RX2 window')
                 if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
                     node.ack_received += 1
+                    node.Q_matrix[node.ul_packet.dr][freq_list.index(node.ul_packet.freq)] +=1
+                    node.reward += 1
                     # Wait for packet to be received
                     node.Rx_time += node.dl_packet.rectime
                     yield env.timeout(node.dl_packet.rectime)
@@ -779,11 +838,18 @@ def transmit(env, node):
                         print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> ACK successfully received by Node')
                 else:
                     # Packet is not successfully received by BS, no ACK is sent
+                    node.nack_received += 1
+                    node.Q_matrix[node.ul_packet.dr][freq_list.index(node.ul_packet.freq)] -=1
+                    node.nreward += 1
                     node.Stdby_time += Tpream
                     yield env.timeout(Tpream)
                     node.goto_sleep_instant = env.now
             else:
                 # no ACK is received
+                node.nack_received += 1
+
+                node.Q_matrix[node.ul_packet.dr][freq_list.index(node.ul_packet.freq)] -=1
+                node.nreward += 1
                 node.Stdby_time += Tpream
                 yield env.timeout(Tpream)
                 node.Idle_time += RX2_DELAY - RX1_DELAY
@@ -801,6 +867,20 @@ def transmit(env, node):
         node.ul_packet.lost = False
 
 
+
+# Functions
+
+def add_trace(time,event):
+    stack = contextlib.ExitStack()
+    try:
+        file = stack.enter_context(open(trace_file,'a+'))
+        file.write(f"{float(time):.2f} {event}\n")
+        file.close()
+    except OSError as e:
+        print('open() or file.__enter__() failed', e)
+    else:
+        with stack:
+            print('put your with-block here')
 
 
 #-----------------------------------------------------------------------------------------------------------------------#
@@ -870,6 +950,7 @@ lorawan_class = 'Class_A'
 packetsAtBS = []
 if verbose >= 1:
     print("[INFO] - Creating simpy environment and initialize global parameter")
+
 env = simpy.Environment()
 
 # maximum number of packets the BS can receive at the same time
@@ -932,15 +1013,28 @@ if (graphics == 1):
 if loadNodesLocation:
     if verbose >=1:
         print("[INFO] - Loading node location from node location file...")
-    if os.path.isfile('data/nodes.txt'):
-        nodesPosition = np.loadtxt('data/nodes.txt')
+    if os.path.isfile('data/nodes'+str(nrNodes)+'.txt'):
+        nodesPosition = np.loadtxt('data/nodes'+str(nrNodes)+'.txt')
         nrNodes = nodesPosition.shape[0]
-        print(str(nodesPosition[1][1]) + "\n")
+        #print(nrNodes,int(nodesPosition[1][2]))
+    else:
+        loadNodesLocation=0
+        if verbose >=1:
+            print("[INFO] - Cannot load node location from node location file, generating a new location file...")
 
 for i in range(0, nrNodes):
     # myNode takes period (in ms), base station id packetlen (in Bytes)
     # 1000000 = 16 min
+    if verbose >=3:
+            print("[INFO] - Creating node ",str(i))
+
     node = myNode(i, lorawan_class, bsId, avgSendTime, 20)
+    if verbose >=3:
+            print()
+            print("matrice Q du noeud", i, "est", node.Q_matrix)  # Chaque noeud a sa matrice Q
+            print("récompense du noeud", i, "est", node.reward)
+            print("sanction du noeud", i, "est", node.nreward)
+    
     nodes.append(node)
     env.process(transmit(env, node))
 
@@ -954,6 +1048,7 @@ if (graphics == 1):
 #-----------------------------------------------------------------------------------------------------------------------
 # start simulation
 #-----------------------------------------------------------------------------------------------------------------------
+add_trace("-1","START")
 if verbose>=1:
     print("---------------------------------------------------------------------")
     print(" Starting simulation")
@@ -969,7 +1064,7 @@ if verbose>=1:
     print("---------------------------------------------------------------------")
     print(" End of simulation ! Preparing and saving results")
     print("---------------------------------------------------------------------")
-
+add_trace("-1","END")
 # print stats and save into file
 if (verbose >= 1):
     print("nrCollisions ", nrCollisions)
@@ -985,16 +1080,31 @@ Nstb = 2  # number of stanby mode, nodes go two time in standby mode
 sent = sum(n.sent for n in nodes)
 energy_TxUL = sum(node.ul_packet.rectime * TX[int(node.ul_packet.txpow) + 2] * V * node.sent for node in nodes)
 energy_TxUL1 = sum(node.Tx_time * node.I_Tx * node.Voltage for node in nodes)
+if verbose >=3:
+    print("energy (in J) in tx only basic: ",energy_TxUL)
+    print("energy (in J) in tx only class: ",energy_TxUL1)
+
 energy_idle = sum(idletime * Iidle * V * node.sent for node in nodes)
 energy_idle1 = sum(node.Idle_time * node.I_Idle * node.Voltage for node in nodes )
+if verbose >=3:
+    print("energy (in J) in Idle time basic: ",energy_idle)
+    print("energy (in J) in Idle time class: ",energy_idle1)
+
 energy_stb = sum(Tpream * Nstb * Istb * V * node.sent for node in nodes)
 energy_stb1 = sum(node.Stdby_time * node.I_Stdby * node.Voltage for node in nodes)
-energy_sleep = sum(
-    (avgSendTime - node.ul_packet.rectime - idletime - Nstb * Tpream) * Isleep * V * node.sent for node in nodes)
+if verbose >=3:
+    print("energy (in J) in stb time basic: ",energy_stb)
+    print("energy (in J) in stb time class: ",energy_stb1)
+
+energy_sleep = sum((avgSendTime - node.ul_packet.rectime - idletime - Nstb * Tpream) * Isleep * V * node.sent for node in nodes)
 energy_sleep1 = sum(node.Sleep_time * node.I_Sleep * node.Voltage for node in nodes)
+if verbose >=3:
+    print("energy (in J) in sleep time basic: ",energy_sleep)
+    print("energy (in J) in sleep time class: ",energy_sleep1)
+
 energy1 = energy_TxUL / 1e6
 energy2 = (energy_TxUL + energy_idle + energy_stb + energy_sleep) / 1e6
-energy3 = (energy_TxUL1 + energy_idle1 + energy_stb1 + energy_sleep) / 1e6
+energy3 = (energy_TxUL1 + energy_idle1 + energy_stb1 + energy_sleep1) / 1e6
 if (verbose >= 1):
     print("energy (in J) in tx only: ", energy1)
     print(" total energy IF (in J): ", energy2)
@@ -1005,13 +1115,26 @@ if (verbose >= 1):
     print("processed packets: ", nrProcessed)
     print("lost packets: ", nrLost)
 
+# Print Node frequency usage
+if verbose >=3:
+    for i in range(0,nrNodes):
+        print("Freq usage of node ",i," : ",nodes[i].freq_usage)
+
 # data extraction rate
-der1 = (sent - nrCollisions) / float(sent)
-if (verbose >= 1):
-    print("DER method 1:", der1)
-der2 = (nrReceived) / float(sent)
-if (verbose >= 1):
-    print("DER method 2:", der2)
+der1=[]
+der2=[]
+if sent:
+    der1 = (sent - nrCollisions) / float(sent)
+    if (verbose >= 1):
+        print("DER method 1:", der1)
+    der2 = (nrReceived) / float(sent)
+    if (verbose >= 1):
+        print("DER method 2:", der2)
+
+for i in range(0, nrNodes):
+    print("matrice Q du noeud", i, "est:\n", nodes[i].Q_matrix)  # Chaque noeud a sa matrice Q
+    print("récompense du noeud", i, "est", nodes[i].reward)
+    print("sanction du noeud", i, "est", nodes[i].nreward)
 
 # this can be done to keep graphics visible
 if (graphics == 1):
@@ -1025,14 +1148,14 @@ if (verbose >= 1):
 if os.path.isfile(fname):
     res1 = "\n" + str(simtime) + " " + str(avgSendTime) + " " + str(nrNodes) + " " + str(nrCollisions) + " " + str(
         nrReceived) + " " + str(nrProcessed) + " " + str(nrLost) + " " + str(sent) + " " + str(energy1) + " " + str(
-        energy2) + " " + str(der1) + " " + str(der2)
+        energy2)  + " " + str(energy3) + " " + str(der1) + " " + str(der2)
     # res2 = "\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
 
 else:
-    res1 = "#simtime avgSendTime nrNodes nrCollisions nrReceived nrProcessed nrLost nrTransmissions OverallEnergy1 OverallEnergy2 der1 der2 \n" + str(
+    res1 = "#simtime avgSendTime nrNodes nrCollisions nrReceived nrProcessed nrLost nrTransmissions OverallEnergy1 OverallEnergy2 OverallEnergy3 der1 der2 \n" + str(
         simtime) + " " + str(avgSendTime) + " " + str(nrNodes) + " " + str(nrCollisions) + " " + str(
         nrReceived) + " " + str(nrProcessed) + " " + str(nrLost) + " " + str(sent) + " " + str(energy1) + " " + str(
-        energy2) + " " + str(der1) + " " + str(der2)
+        energy2) + " " + str(energy3)+ " " + str(der1) + " " + str(der2)
     # res2 = "#simtime avgSendTime nrNodes nrCollisions nrReceived nrProcessed nrLost nrTransmissions OverallEnergy\n" + str(nrNodes) + " " + str(nrCollisions) + " " + str(sent) + " " + str(energy2)
 with open(fname, "a") as myfile:
     myfile.write(res1)
@@ -1043,8 +1166,8 @@ myfile.close()
 if not loadNodesLocation:
     if verbose >=1:
         print("[INFO] - saving node location to nodes.txt and bs location to basestation.txt...")
-    with open(data_path+'/nodes.txt', 'w') as nfile:
+    with open(data_path+'/nodes'+str(nrNodes)+'.txt', 'w') as nfile:
         for n in nodes:
             nfile.write("{} {} {}\n".format(n.x, n.y, n.nodeid))
-    with open(data_path+'/basestation.txt', 'w') as bfile:
+    with open(data_path+'/basestation'+str(nrNodes)+'.txt', 'w') as bfile:
         bfile.write("{} {} {}\n".format(bsx, bsy, 0))
