@@ -82,7 +82,7 @@ from datetime import datetime
 # 2 : ERROR mode : only error messages are printed
 # 3 : DEBUG mode : all messages are printed
 # Default mode is SILENT mode
-verbose = 3
+verbose = 0
 Tpream = 0
 
 RX1_DELAY = 1000    # RX1 Delay in ms
@@ -164,7 +164,7 @@ mac_protocol = 0
 loadNodesLocation = 1
 
 # turn on/off graphics
-graphics = 1
+graphics = 0
 
 # do the full collision check
 full_collision = False
@@ -523,8 +523,8 @@ class myPacket():
         if experiment == 6:
             # Exploration phase
             #DR = random.randint(0, 6)
-            DR = random.randint(0, 5)
-            #DR=5
+            #DR = random.randint(0, 5)
+            DR=0
             FR = random.randint(0, 2)          # TEST
             self.dr = DR
             self.freq = FR                    # TEST
@@ -796,7 +796,7 @@ def transmit(env, node):
                 if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
                     # Packet is successfully received by BS, ACK packet can now be sent
                     node.ack_received += 1
-                    node.Q_matrix[node.packet.dr][freq_list.index(node.ul_packet.freq)] +=1
+                    node.Q_matrix[node.ul_packet.dr][freq_list.index(node.ul_packet.freq)] +=1
                     node.reward += 1
                     # Wait for packet to be received
                     node.Rx_time += node.dl_packet.rectime
@@ -807,7 +807,7 @@ def transmit(env, node):
                 else :
                     # Packet is not successfully received by BS, but RX2 window should be opened
                     node.nack_received += 1
-                    node.Q_matrix[node.packet.dr][node.packet.freq] -=1
+                    node.Q_matrix[node.ul_packet.dr][freq_list.index(node.ul_packet.freq)] -=1
                     node.nreward += 1
                     node.Stdby_time += Tpream
                     yield env.timeout(Tpream)
@@ -871,16 +871,21 @@ def transmit(env, node):
 # Functions
 
 def add_trace(time,event):
-    stack = contextlib.ExitStack()
-    try:
-        file = stack.enter_context(open(trace_file,'a+'))
-        file.write(f"{float(time):.2f} {event}\n")
-        file.close()
-    except OSError as e:
-        print('open() or file.__enter__() failed', e)
-    else:
-        with stack:
-            print('put your with-block here')
+    if verbose>=3:
+        stack = contextlib.ExitStack()
+        try:
+            file = stack.enter_context(open(trace_file,'a+'))
+            file.write(f"{float(time):.2f} {event}\n")
+            file.close()
+        except OSError as e:
+            print('open() or file.__enter__() failed', e)
+        else:
+            with stack:
+            # print('put your with-block here')
+                with open(trace_file, 'a+') as file:
+                    file.write(f"{float(time):.2f} {event}\n")
+                    file.close()
+
 
 
 #-----------------------------------------------------------------------------------------------------------------------#
@@ -888,7 +893,7 @@ def add_trace(time,event):
 #-----------------------------------------------------------------------------------------------------------------------
 
 # get arguments
-if verbose>=1:
+if (verbose>=1):
     print("---------------------------------------------------------------------")
     print(" Initializing configuration parameters for simulation")
     print("---------------------------------------------------------------------")
@@ -1118,7 +1123,7 @@ if (verbose >= 1):
 # Print Node frequency usage
 if verbose >=3:
     for i in range(0,nrNodes):
-        print("Freq usage of node ",i," : ",nodes[i].freq_usage)
+        print("Freq usage of node ",i," : ",nodes[i].freq_usage/float(nodes[i].sent))
 
 # data extraction rate
 der1=[]
@@ -1130,11 +1135,11 @@ if sent:
     der2 = (nrReceived) / float(sent)
     if (verbose >= 1):
         print("DER method 2:", der2)
-
-for i in range(0, nrNodes):
-    print("matrice Q du noeud", i, "est:\n", nodes[i].Q_matrix)  # Chaque noeud a sa matrice Q
-    print("récompense du noeud", i, "est", nodes[i].reward)
-    print("sanction du noeud", i, "est", nodes[i].nreward)
+if verbose>=3:
+    for i in range(0, nrNodes):
+        print("matrice Q du noeud", i, "est:\n", nodes[i].Q_matrix)  # Chaque noeud a sa matrice Q
+        print("récompense du noeud", i, "est", nodes[i].reward)
+        print("sanction du noeud", i, "est", nodes[i].nreward)
 
 # this can be done to keep graphics visible
 if (graphics == 1):
