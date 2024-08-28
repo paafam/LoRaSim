@@ -176,7 +176,7 @@ full_collision = False
 # 3: with shortest possible packets depending on distance
 
 # Store frequency channels usage for freq: 868100000, 868300000, 868500000
-global_freq_usage = [0, 0, 0]
+global_freq_usage = np.float64([0, 0, 0])
 freq_list = [868100000, 868300000, 868500000]
 
 # this is an array with measured values for sensitivity
@@ -373,7 +373,10 @@ class myNode():
 
         # This refers to the packet size of an ACK frame (i.e. without app payload)
         dl_packetlen = 13
+        self.exploration_phase=True # selection between exploration and exploitation phases
         self.Q_matrix = np.zeros((6, 3))  # Matrice Q de taille 6x3 (6 DRs, 3 colonnes pour F1, F2, F3)
+        self.UCB_policy_freq_selection = np.float64([0, 0, 0])
+
         # this is very complex prodecure for placing nodes
         # and ensure minimum distance between each pair of nodes
         found = 0
@@ -434,6 +437,7 @@ class myNode():
             self.dl_packet = myPacket(self.nodeid, dl_packetlen, self.dist, 'confirmed')
 
         self.sent = 0
+        self.nrprocessed=0
         # number of DL ACK received by the node
         # This is required for confirmed frame only
         self.ack_received = 0
@@ -444,7 +448,7 @@ class myNode():
 
         # number of DL ACK received by the node
         # This is required for confirmed frame only
-        self.ack_received = 0
+        #self.ack_received = 0
 
         # Node frequency usage. Incremented each time a packet is sent using one of these frequency channels
         # freq_usage[0] = 868100000,
@@ -452,6 +456,7 @@ class myNode():
         # freq_usage[2] = 868500000
         self.freq_usage = [0, 0, 0]
         self.freq_usage_ack_received = [0, 0, 0]
+        self.freq_mean_success_rate = np.float64([0, 0, 0])
 
         # Energy consumption
         self.Voltage = 3.0  # node voltage V
@@ -603,8 +608,10 @@ class myPacket():
             # Exploration phase
             #self.freq = random.choice([860000000, 864000000, 868000000])
             self.freq = random.choice( [868100000, 868300000, 868500000])      # TEST
+            
             # ToDo : Exploitation phase
             # Chose the frequency according to the Q learning matrice
+            self.freq = 868100000
         else:
             self.freq = 868100000
 
@@ -626,11 +633,29 @@ class myPacket():
         if experiment == 1:
             self.freq = random.choice([868100000, 868300000, 868500000])
         elif experiment == 6:
-            # Exploration phase
-            self.freq = random.choice([868100000, 868300000, 868500000])
-            #self.freq = random.choice([860000000, 864000000, 868000000])
-            # ToDo : Exploitation phase
-            # Chose the frequency according to the Q learning matrice
+            if nodes[self.nodeid].exploration_phase:
+                # Exploration phase
+                if verbose >=3:
+                    print("# Node ",self.nodeid," : Exploration Phase")
+                #self.freq = random.choice([860000000, 864000000, 868000000])
+                self.freq = random.choice( [868100000, 868300000, 868500000])
+                # check if freq channel was not previously selected
+                if (nodes[self.nodeid].freq_usage[freq_list.index(self.freq)] != 0):
+                    self.freq = freq_list[freq_list.index(self.freq)-1]
+                    if (nodes[self.nodeid].freq_usage[freq_list.index(self.freq)] != 0):
+                        self.freq = freq_list[freq_list.index(self.freq)-1]
+                        if (nodes[self.nodeid].freq_usage[freq_list.index(self.freq)] != 0):
+                            # exploration phase is done
+                            nodes[self.nodeid].exploration_phase=False
+                            if verbose >=3:
+                                print("| Exploration phase complete.... switching to exploitation phase")
+
+            else:
+                # ToDo : Exploitation phase
+                if verbose >=3:
+                    print("# Node ",self.nodeid," : Exploitation Phase")
+                # Chose the frequency according to the Q learning matrice
+                self.freq = freq_list[np.argmax(nodes[self.nodeid].UCB_policy_freq_selection)]
         else:
             self.freq = 868100000
         if verbose >=3:
@@ -774,6 +799,7 @@ def transmit(env, node):
                 global nrProcessed
                 nrProcessed = \
                     nrProcessed + 1
+                node.nrprocessed = node.nrprocessed +1
 
             # complete packet has been received by base station
             # can remove it
@@ -796,6 +822,7 @@ def transmit(env, node):
                 if node.ul_packet.MType == 'confirmed' and node.ul_packet.collided == 0 and not node.ul_packet.lost:
                     # Packet is successfully received by BS, ACK packet can now be sent
                     node.ack_received += 1
+                    node.freq_usage_ack_received[freq_list.index(node.ul_packet.freq)]+=1
                     node.Q_matrix[node.ul_packet.dr][freq_list.index(node.ul_packet.freq)] +=1
                     node.reward += 1
                     # Wait for packet to be received
@@ -818,6 +845,13 @@ def transmit(env, node):
                     node.goto_sleep_instant = env.now
                     if verbose >= 3:
                         print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> Opening RX2 window')
+                if verbose >= 3:
+                        print("[DEBUG] - " + str(env.now) + ' --- Node ' + str(node.nodeid) + '--> Update freq channel mean success rate')
+                # compute UCB parameters
+                node.freq_mean_success_rate[freq_list.index(node.ul_packet.freq)]=np.float64(node.freq_usage_ack_received[freq_list.index(node.ul_packet.freq)])/np.float64(node.freq_usage[freq_list.index(node.ul_packet.freq)])
+                for i in [0,1,2]:
+                    if (node.freq_usage[i]):
+                        node.UCB_policy_freq_selection[i]= node.freq_mean_success_rate[i] + np.sqrt(2*np.log10(node.sent)/np.float64(node.freq_usage[i]))
             elif sim_scenario == 2:
                 # ACK is received in the second RX2 window
                 node.Stdby_time += Tpream
@@ -1123,11 +1157,17 @@ if (verbose >= 1):
 # Print Node frequency usage
 if verbose >=3:
     for i in range(0,nrNodes):
-        print("Freq usage of node ",i," : ",nodes[i].freq_usage/float(nodes[i].sent))
+        print("# Node ",i)
+        print("| Packets sent of node ",i," : ",nodes[i].sent)
+        print("| Freq usage of node ",i," : ",nodes[i].freq_usage)
+        print("| Freq usage ack of node ",i," : ",nodes[i].freq_usage_ack_received)
+        print("| Freq mean success rate of node ",i," : ",nodes[i].freq_mean_success_rate)
+        print("| Freq UCB policy selection ",i," : ",nodes[i].UCB_policy_freq_selection)
 
 # data extraction rate
 der1=[]
 der2=[]
+global_freq_usage_ratio=[]
 if sent:
     der1 = (sent - nrCollisions) / float(sent)
     if (verbose >= 1):
@@ -1135,6 +1175,7 @@ if sent:
     der2 = (nrReceived) / float(sent)
     if (verbose >= 1):
         print("DER method 2:", der2)
+    global_freq_usage_ratio= global_freq_usage/np.float64(sent)
 if verbose>=3:
     for i in range(0, nrNodes):
         print("matrice Q du noeud", i, "est:\n", nodes[i].Q_matrix)  # Chaque noeud a sa matrice Q
